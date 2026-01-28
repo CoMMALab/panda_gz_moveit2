@@ -1,4 +1,4 @@
-# Assignment: MoveIt 2 Motion Planning with the Panda Robot
+# Lab 01: MoveIt 2 Motion Planning with the Panda Robot
 
 ## Overview
 
