@@ -6,8 +6,15 @@ In this assignment, you will use MoveIt 2 to plan and execute motions for a simu
 
 1. Set up and run a ROS 2 simulation environment using Docker
 2. Use MoveIt 2's RViz interface for interactive motion planning
-3. Understand the relationship between planning groups, joint states, and motion trajectories
+3. Understand frames and transforms, inspecting telemetry topics, and experimenting with different planner behaviors
 4. Execute planned motions on a simulated robot
+
+## Submission Requirements
+
+Submit a PDF document containing:
+
+1. All screenshots as specified in the deliverables.
+2. Written answers to all questions.
 
 ### For NVIDIA GPU Users (Optional but Recommended)
 
@@ -56,13 +63,24 @@ colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=
 source install/setup.bash
 ```
 
-## Part 2: Running the Motion Planning Demo (15 points)
+
+**Deliverable 1.3:** Based on the output of `colcon build`, how many packages are built as part of the project?
+
+## Part 2: Running the Motion Planning Demo (20 points)
 
 ### Step 2.1: Launch the Planning Interface
 
+First, start a tmux session so you can run multiple commands:
+
+```shell
+tmux
+```
+
+You can create new tabs with `Ctrl+b` then `c`, and switch between them with `Ctrl+b` then `p` (previous) or `n` (next).
+
 Launch the fake controller demo (no physics simulation, instant motion execution):
 
-```bash
+```shell
 ros2 launch panda_moveit_config ex_fake_control.launch.py
 ```
 
@@ -76,38 +94,45 @@ In RViz, locate the "MotionPlanning" panel on the left side. You should see:
 - **Start State:** The current robot configuration (shown in green)
 - **Goal State:** The target configuration (shown in orange)
 
-### Step 2.3: Understanding Planning Groups
+### Step 2.3: Understanding Frames and Transforms
 
-The Panda robot has two planning groups defined:
+In RViz, click **Add** in the Displays panel, select **TF**, and click OK to visualize the robot's coordinate frames.
 
-1. **arm** - The 7 joints of the manipulator (panda_joint1 through panda_joint7)
-2. **gripper** - The 2 finger joints (panda_finger_joint1, panda_finger_joint2)
+In another tmux tab, generate a TF tree diagram:
 
-Use the dropdown in the MotionPlanning panel to switch between groups.
+```shell
+ros2 run tf2_tools view_frames --output frames
+```
 
-**Deliverable 2.2:** Answer the following questions:
-- What is the end-effector link for the arm group? (Hint: check the SRDF file or the TF tree in RViz)
+This creates a `frames.pdf` file. To view it, open a terminal **outside** the container and copy it out:
 
-## Part 3: Interactive Motion Planning (25 points)
+```shell
+docker cp $(docker ps -qf "ancestor=panda_gz_moveit2"):/root/ws/frames.pdf .
+```
+
+Then open `frames.pdf` on your host machine.
+
+**Deliverable 2.3:** Answer the following questions:
+- What is the name of the child of `panda_link8` (i.e. the end-effector frame)?
+- What is the parent frame of `panda_link4`? What about `panda_link0`?
+- How many links (not including endpoints) are in-between the kinematic chain from `panda_link0` to `panda_rightfinger`?
+
+## Part 3: Interactive Motion Planning (35 points)
 
 ### Step 3.1: Set a Goal Using the Interactive Marker
 
 1. In RViz, you should see an interactive marker (colored rings and arrows) at the robot's end-effector
 2. Drag the marker to move the goal pose
 3. The orange "ghost" robot shows where the arm will move to
-
-### Step 3.2: Plan a Motion
-
-1. With a goal pose set, click the **"Plan"** button in the MotionPlanning panel
-2. Observe the planned trajectory animation
-3. The trajectory shows how the robot will move from start to goal
+4. With a goal pose set, click the **"Plan"** button in the MotionPlanning panel
+5. Observe the planned trajectory animation. The trajectory shows how the robot will move from start to goal
 
 **Deliverable 3.1:**
 - Plan a motion that moves the end-effector of the robot.
 - Take a screenshot showing the planned trajectory (the animated path).
 - Record the planning time displayed in the panel.
 
-### Step 3.3: Execute the Motion
+### Step 3.2: Execute the Motion
 
 1. Click **"Execute"** to run the planned trajectory
 2. The robot (green) will move to match the goal (orange)
@@ -115,7 +140,7 @@ Use the dropdown in the MotionPlanning panel to switch between groups.
 
 **Deliverable 3.2:** Take a screenshot showing the robot in its new position after execution.
 
-### Step 3.4: Use Predefined Poses
+### Step 3.3: Use Predefined Poses
 
 The SRDF defines several named poses:
 
@@ -128,75 +153,54 @@ The SRDF defines several named poses:
 3. Plan and execute the motion
 
 **Deliverable 3.3:**
-- Define a new named pose in the SRDF of the robot.
-- Execute motions to visit all three predefined poses and your new pose (ready → extended → transport → your new pose → ready)
+- Execute motions to visit a sequence of all three predefined poses and a custom pose (ready → extended → transport → a custom pose → ready)
 - For each transition, record:
   - Planning time
   - Whether the plan succeeded on the first attempt
 
-## Part 4: Understanding Motion Planning (25 points)
+## Part 4: Understanding Motion Planning (35 points)
 
 ### Step 4.1: Examine the Planning Pipeline
 
-The motion planner uses OMPL (Open Motion Planning Library) with the RRTConnect algorithm by default.
+Now launch the Gazebo simulation (close the fake control demo first, or use a new tmux tab):
 
-**Deliverable 4.1:** Answer the following questions based on your observations and the configuration files:
-
-1. What planner is configured as the default? (Hint: check `ompl_planning.yaml`)
-2. What is the difference between "Plan" failing vs "Execute" failing?
-
-### Step 4.2: Collision Awareness
-
-1. Launch the Gazebo simulation: `ros2 launch panda_moveit_config ex_gz_control.launch.py`
-2. In Gazebo, drag one of the tabletop objects (red box or blue cylinder) to a new position
-3. Observe that RViz's planning scene updates automatically
-4. Position an object between the robot and a goal pose
-5. Attempt to plan a motion through/around the obstacle
-
-**Deliverable 4.2:**
-- Take a screenshot showing a planned trajectory that avoids the obstacle.
-- What happens if you place the obstacle directly on the goal pose?
-
-### Step 4.3: Joint Space vs Cartesian Space
-
-1. In the MotionPlanning panel, find the "Planning" tab
-2. Experiment with the "Use Cartesian Path" option.
-
-**Deliverable 4.3:** Compare results from at least 2 different planners:
-- Which planner produced shorter paths?
-- Which planner was faster?
-
-## Part 5: Gazebo Simulation (25 points)
-
-### Step 5.1: Launch Gazebo Simulation
-
-```bash
+```shell
 ros2 launch panda_moveit_config ex_gz_control.launch.py
 ```
 
-This launches:
-- Gazebo simulator with the Panda robot and a tabletop scene
-- Two objects on the table: a red box and a blue cylinder
-- MoveIt 2 move_group node
-- RViz for motion planning
+The motion planner uses OMPL (Open Motion Planning Library) with the RRTConnect algorithm by default.
 
-### Step 5.2: Physics-Based Execution
+**Deliverable 4.1:** After launching the simulation, answer the following questions using `ros2 topic list` and `ros2 topic info`:
 
-1. Plan and execute motions as before
-2. Observe the difference - motions now follow physics (gravity, inertia, motor limits)
+1. Run `ros2 topic list` in the other `tmux` session. What topic is published to so that MoveIt can query the planning scene? (Hint: you can cross-check `panda_moveit_config/scripts/scene_publisher.py`)
+2. Run `gz topic -e -t /world/tabletop_world/dynamic_pose/info`. What is the ID of the red box? What is its initial position and orientation? (Hint: try piping the output of `gz` to `grep`)
+3. What action server does MoveIt use for trajectory execution? (Hint: use `ros2 action list`)
 
-**Deliverable 5.1:**
-- Compare execution of the same trajectory in fake control vs Gazebo. What differences do you observe?
-- Why might a trajectory succeed in fake control but have issues in Gazebo?
+### Step 4.2: Collision Awareness
 
+1. In Gazebo, drag one of the tabletop objects (red box or blue cylinder) to a new position
+2. Observe that RViz's planning scene updates automatically
+3. Position an object between the robot and a goal pose
+4. Attempt to plan a motion through/around the obstacle
 
-## Submission Requirements
+**Deliverable 4.2:**
+- Take two screenshots showing a planned trajectory that avoids the obstacle, before and after executing.
+- What happens if you place the obstacle directly on the goal pose?
 
-Submit a PDF document containing:
+### Step 4.3: Comparing Planners
 
-1. All screenshots as specified in the deliverables.
-2. Written answers to all questions.
-3. A brief reflection (1 paragraph) on what you learned.
+1. In the MotionPlanning panel, find the **Context** tab
+2. Use the planner dropdown to select different OMPL planners (e.g., RRTConnect, RRT*, PRM, EST)
+3. Find another goal pose that has an obstacle between it and the robot
+4. For each planner, run `plan` for the same motion 5 times
+
+**Deliverable 4.3:** Compare at least 3 different planners and create a table with:
+- Planner name
+- Average planning time (out of 5)
+- Path length (qualitative: short/medium/long)
+- Success rate (out of 5)
+
+Which planner would you choose for a time-critical application? Which for path quality?
 
 ## Troubleshooting
 
