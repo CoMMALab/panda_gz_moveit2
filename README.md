@@ -112,9 +112,9 @@ docker cp $(docker ps -qf "ancestor=panda_gz_moveit2"):/root/ws/frames.pdf .
 Then open `frames.pdf` on your host machine.
 
 **Deliverable 2.3:** Answer the following questions:
-- What is the name of the child of `panda_link8` (i.e. the end-effector frame)?
+- What is the child frame of `panda_link8` (i.e. the end-effector frame)?
 - What is the parent frame of `panda_link4`? What about `panda_link0`?
-- How many links (not including endpoints) are in-between the kinematic chain from `panda_link0` to `panda_rightfinger`?
+- How many links (not including endpoints) are in the kinematic chain between `panda_link0` and `panda_rightfinger`?
 
 ## Part 3: Interactive Motion Planning (35 points)
 
