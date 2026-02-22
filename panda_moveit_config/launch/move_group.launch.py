@@ -198,9 +198,8 @@ def generate_launch_description():
     trajectory_execution = {
         "allow_trajectory_execution": True,
         "moveit_manage_controllers": False,
-        "trajectory_execution.allowed_execution_duration_scaling": 1.2,
-        "trajectory_execution.allowed_goal_duration_margin": 0.5,
-        "trajectory_execution.allowed_start_tolerance": 0.01,
+        "trajectory_execution.execution_duration_monitoring": False,
+        "trajectory_execution.allowed_start_tolerance": 0.0,
     }
 
     # Controller parameters
@@ -264,7 +263,7 @@ def generate_launch_description():
         Node(
             package="moveit_ros_move_group",
             executable="move_group",
-            output="log",
+            output="screen",
             arguments=["--ros-args", "--log-level", log_level],
             parameters=[
                 robot_description,
