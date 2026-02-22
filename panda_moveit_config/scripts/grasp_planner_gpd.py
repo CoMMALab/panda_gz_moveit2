@@ -314,6 +314,20 @@ class GraspPlannerGPD(Node):
         'panda_joint7': 0.0,
     }
 
+    # Arm pose that points the wrist camera down at the tabletop workspace.
+    # joint4 deeply negative bends the elbow so the hand faces the table;
+    # joint6 high pitches the wrist so the camera looks straight down.
+    # Tune these values if the camera view needs adjustment.
+    LOOK_JOINTS = {
+        'panda_joint1': 0.0,
+        'panda_joint2': -0.2,
+        'panda_joint3': 0.0,
+        'panda_joint4': -2.6,
+        'panda_joint5': 0.0,
+        'panda_joint6':  2.4,
+        'panda_joint7': 0.785,
+    }
+
     def __init__(self):
         super().__init__('grasp_planner_gpd')
 
@@ -651,6 +665,11 @@ class GraspPlannerGPD(Node):
         self.move_gripper(open=True)
         self.move_arm_to_joints(self.INITIAL_JOINTS)
 
+    def look(self) -> bool:
+        """Move to the observation pose so the wrist camera sees the workspace."""
+        self.get_logger().info('Moving to observation pose ...')
+        return self.move_arm_to_joints(self.LOOK_JOINTS)
+
     # ------------------------------------------------------------------
     # GPD grasp selection
     # ------------------------------------------------------------------
@@ -913,6 +932,9 @@ def main(args=None):
         scene.world.collision_objects.append(co)
         node.scene_pub.publish(scene)
     else:
+        # Move to observation pose so the wrist camera can see the workspace,
+        # then wait for the object detector to publish a detection.
+        node.look()
         node.get_logger().info('Waiting for detected objects on /collision_object ...')
         while not node.detected_objects:
             rclpy.spin_once(node, timeout_sec=0.5)

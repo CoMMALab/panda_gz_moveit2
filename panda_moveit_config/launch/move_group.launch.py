@@ -17,6 +17,7 @@ from launch.substitutions import (
     PythonExpression,
 )
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -98,7 +99,7 @@ def generate_launch_description():
             gazebo_preserve_fixed_joint,
         ]
     )
-    robot_description = {"robot_description": _robot_description_xml}
+    robot_description = {"robot_description": ParameterValue(_robot_description_xml, value_type=str)}
 
     # SRDF
     _robot_description_semantic_xml = Command(
@@ -121,7 +122,7 @@ def generate_launch_description():
         ]
     )
     robot_description_semantic = {
-        "robot_description_semantic": _robot_description_semantic_xml
+        "robot_description_semantic": ParameterValue(_robot_description_semantic_xml, value_type=str)
     }
 
     # Kinematics

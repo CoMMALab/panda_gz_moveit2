@@ -37,7 +37,7 @@ class ObjectDetector(Node):
 
         # Subscribe to bridged point-cloud
         self.pc_sub = self.create_subscription(
-            PointCloud2, '/point_cloud',
+            PointCloud2, '/wrist_camera/points',
             self.point_cloud_callback, 10
         )
 
