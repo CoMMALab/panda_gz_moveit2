@@ -24,10 +24,12 @@ ros2 launch panda_moveit_config ex_gz_control.launch.py
 
 ## Container Aliases
 
-| Alias | Command |
-|-------|---------|
-| `launch_ctrl` | `ros2 launch panda_moveit_config ex_gz_control.launch.py` |
-| `build` | `colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=Release"` |
+| Alias | Command | Description |
+|-------|---------|-------------|
+| `launch_ctrl` | `ros2 launch panda_moveit_config ex_gz_control.launch.py` | Launch Gazebo + MoveIt 2 + RViz |
+| `launch_detector` | `ros2 run panda_moveit_config object_detector.py` | Run the tabletop object detector |
+| `launch_planner` | `ros2 run panda_moveit_config grasp_planner.py` | Run the grasp planner |
+| `build` | `colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=Release"` | Rebuild the ROS workspace |
 
 ## Labs
 

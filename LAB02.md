@@ -8,14 +8,20 @@ In this lab, you will extend the Panda robot simulation with perception and gras
 2. Configure the ROS-Gazebo bridge to publish point cloud data
 3. Implement object detection from point cloud data
 4. Implement grasp planning using MoveIt's pick/place functionality
+5. (Bonus) Integrate GPD to explore learned grasp candidates
 
 ## Prerequisites
 
 Complete Lab 01 and ensure your environment is working. Use the same Docker container.
 
 > **Tip:** The container includes the following aliases:
-> - `launch_ctrl` — `ros2 launch panda_moveit_config ex_gz_control.launch.py`
-> - `build` — `colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=Release"`
+>
+> | Alias | Description |
+> |-------|-------------|
+> | `launch_ctrl` | Launch Gazebo + MoveIt 2 + RViz |
+> | `launch_detector` | Run the tabletop object detector |
+> | `launch_planner` | Run the grasp planner |
+> | `build` | Rebuild the ROS workspace |
 
 ## Submission Requirements
 
@@ -207,19 +213,21 @@ panda_moveit_config/scripts/object_detector.py
 
 This file contains:
 
-* A subscriber on `/overhead_camera/points`  
+* A subscriber on `/point_cloud`
 * Utility functions to convert point clouds, build bounding boxes, and **publish them**.
 
 **Deliverable 2**
 
-Your job is to complete **`point_cloud_callback`** function implementations. You may need to change the subscriber topic in `__init__`. The functions you should complete are:
+Your job is to complete the following functions, marked with numbered TODOs in the file:
 
-1. `transform_points`
-2. `filter_points`
-3. `compute_bounding_box`
-4. `point_cloud_callback`
+| TODO | Function | Description |
+|------|----------|-------------|
+| 2.1 | `build_transform` | Build a 4×4 homogeneous transform from a TF translation and quaternion |
+| 2.2 | `transform_points` | Apply the transform to convert camera-frame points to world frame |
+| 2.3 | `filter_points` | Remove table and floor points, keeping only object points |
+| 2.4 | `compute_bounding_box` | Compute an axis-aligned bounding box from the filtered object points |
 
-Run your script.
+Complete them in order, then run your script.
 
 ## Part 3: Implementing Grasp Planning (35 points)
 
@@ -280,6 +288,107 @@ ros2 run panda_moveit_config grasp_planner.py
 2. What happens if the approach/retreat z-offset is too small? Too large?
 3. How would you modify the grasp strategy for a cylindrical object vs a box?
 
+
+---
+
+## Bonus: 6-DoF Grasp Planning with GPD (20 points)
+
+Parts 1–3 use a hand-crafted top-down grasp that works only for upright objects.
+**Grasp Pose Detection (GPD)** replaces that heuristic with a learned approach: it
+scores grasp candidates from a point cloud with a CNN and returns ranked 6-DoF poses.
+
+In this bonus you will extend your `grasp_planner.py` to call GPD and attempt its
+candidates before falling back to the top-down grasp you already implemented.
+
+### How GPD works
+
+GPD operates in three stages:
+
+1. **Candidate sampling** — random antipodal surface point pairs define candidate gripper poses.
+2. **Image encoding** — each candidate is projected into a 15-channel descriptor image encoding local geometry and normals.
+3. **CNN scoring** — a LeNet variant scores candidates; the top-ranked poses are returned.
+
+GPD's dependencies are pre-installed in the container. Build the shared library with:
+
+```shell
+cmake --build /root/ws/src/panda_gz_moveit2/deps/gpd/build --target gpd_python -j$(nproc)
+```
+
+You should see several targets quickly build. Two helper utilities are provided in `grasp_planner_gpd.py` that you can import:
+
+```python
+from grasp_planner_gpd import GPDInterface, sample_cuboid_surface, write_pcd_ascii
+```
+
+- **`GPDInterface(lib_path)`** — loads the library and exposes `detect(config, pcd, camera_pos)`, which returns a list of candidate dicts sorted by score (descending):
+  ```python
+  # Each candidate:
+  {'pos': np.ndarray[3],   # grasp position in world frame
+   'R':   np.ndarray[3,3], # orientation matrix (see frame convention below)
+   'score': float,
+   'antipodal': bool}
+  ```
+- **`sample_cuboid_surface(center, dims, n_points)`** — samples a synthetic point cloud from the bounding box of the detected object and returns an `(N, 3)` numpy array.
+- **`write_pcd_ascii(points, path)`** — writes the array to a PCD file for GPD to consume.
+
+### GPD → Panda TCP frame convention
+
+GPD's orientation matrix `R` has columns with the following meaning:
+
+```
+col 0 = approach direction (toward the object surface)
+col 1 = binormal
+col 2 = hand/finger-closing axis
+```
+
+The Panda `panda_hand_tcp` frame axes are:
+
+```
+x  =  finger-closing axis  →  GPD col 2
+y  =  ???                  →  ???          (TODO B.1)
+z  =  approach             →  GPD col 0
+```
+
+### Step B.1: Implement the frame transformation (TODO B.1)
+
+Add a static method `gpd_grasp_to_pose(pos, R_gpd, depth_offset=0.03)` to your
+`GraspPlanner` class that converts a GPD candidate into a Panda TCP `Pose`.
+
+**Your task:** fill in the `y` column of `R_panda` and explain your choice.
+
+Hints:
+- The result must be a valid rotation matrix: `det(R_panda) = +1`.
+- The `depth_offset` shifts the TCP forward along the approach axis (`col 0`) so the fingers reach proper depth. GPD's `pos` is the surface contact point, not the TCP centre.
+- Use `tf_transformations.quaternion_from_matrix` to convert the 3×3 rotation to a quaternion.
+
+**Deliverable B.1 (written):** What is the `y` column of `R_panda` in terms of GPD columns, and why? What goes wrong if `det(R_panda) = -1`?
+
+### Step B.2: Integrate GPD into your pick sequence
+
+Modify the `pick()` method so that before attempting the top-down grasp it:
+
+1. Loads `GPDInterface` from the path in a ROS parameter `gpd_lib` (default `''`).
+2. Samples a point cloud from the object bounding box using `sample_cuboid_surface`.
+3. Calls `GPDInterface.detect()` to get ranked candidates.
+4. Iterates through candidates, converting each with `_gpd_grasp_to_pose` and attempting a pre-grasp → grasp descent sequence.
+5. Falls back to the top-down grasp if no candidate succeeds or if `gpd_lib` is empty.
+
+The GPD config file is pre-installed; pass its path via a `gpd_config` ROS parameter.
+
+Run with:
+
+```shell
+ros2 run panda_moveit_config grasp_planner.py --ros-args \
+  -p gpd_config:=/root/ws/src/panda_gz_moveit2/deps/gpd/cfg/eigen_params.cfg \
+  -p gpd_lib:=/root/ws/src/panda_gz_moveit2/deps/gpd/build/libgpd_python.so
+```
+
+**Deliverable B.2:** Take a screenshot of RViz showing the ranked GPD candidates
+visualised as arrows on the object. Report the scores of the top 5 candidates.
+Describe what you observe when the arm attempts the top-ranked candidate — does it
+succeed or fail, and why?
+
+---
 
 ## Troubleshooting
 

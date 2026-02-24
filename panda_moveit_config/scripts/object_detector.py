@@ -37,7 +37,7 @@ class ObjectDetector(Node):
 
         # Subscribe to bridged point-cloud
         self.pc_sub = self.create_subscription(
-            PointCloud2, '/wrist_camera/points',
+            PointCloud2, '/point_cloud',
             self.point_cloud_callback, 10
         )
 
@@ -61,6 +61,29 @@ class ObjectDetector(Node):
     # ---------------------------- deliverable --------------------------------
 
     @staticmethod
+    def build_transform(translation, rotation) -> np.ndarray:
+        """
+        Build a 4 × 4 homogeneous transform from a TF translation and quaternion.
+
+        Parameters
+        ----------
+        translation : geometry_msgs/Vector3
+            Camera position in the world frame (fields: x, y, z).
+        rotation : geometry_msgs/Quaternion
+            Camera orientation as a unit quaternion (fields: x, y, z, w).
+
+        Returns
+        -------
+        np.ndarray
+            4 × 4 homogeneous transform T such that
+            ``p_world = T @ [p_cam; 1]``.
+
+        Hint: use ``tf_transformations.quaternion_matrix([x, y, z, w])``
+        to obtain the rotation part, then fill in the translation column.
+        """
+        raise NotImplementedError('TODO 2.1: implement build_transform')
+
+    @staticmethod
     def transform_points(points: np.ndarray, T: np.ndarray) -> np.ndarray:
         """
         Transform a point-cloud from camera to world coordinates.
@@ -79,7 +102,7 @@ class ObjectDetector(Node):
         np.ndarray
             Shape (N, 3) array of the same points in the *world* frame.
         """
-        raise NotImplementedError('TODO: implement transform_points')
+        raise NotImplementedError('TODO 2.2: implement transform_points')
 
     @staticmethod
     def filter_points(points: np.ndarray) -> np.ndarray:
@@ -102,7 +125,7 @@ class ObjectDetector(Node):
         np.ndarray
             Subset of `points` representing the object.
         """
-        raise NotImplementedError('TODO: implement filter_points')
+        raise NotImplementedError('TODO 2.3: implement filter_points')
 
     @staticmethod
     def compute_bounding_box(filtered_points: np.ndarray) -> Tuple[Pose, np.ndarray]:
@@ -120,7 +143,7 @@ class ObjectDetector(Node):
             • Pose – centre of the box, orientation = identity
             • ndarray – `[dx, dy, dz]` edge lengths (metres)
         """
-        raise NotImplementedError('TODO: implement compute_bounding_box')
+        raise NotImplementedError('TODO 2.4: implement compute_bounding_box')
 
     def point_cloud_callback(self, msg: PointCloud2):
         """
@@ -153,7 +176,7 @@ class ObjectDetector(Node):
         if result is None:
             return
         p, q = result   # translation, quaternion
-        # TODO: build T from p, q and call self.transform_points(pts_cam, T)
+        T = self.build_transform(p, q)
         pts_world = self.transform_points(pts_cam, T)
 
         # 3  Height-based filtering
