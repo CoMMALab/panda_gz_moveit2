@@ -280,11 +280,10 @@ ros2 run panda_moveit_config grasp_planner.py
 2. What happens if the approach/retreat z-offset is too small? Too large?
 3. How would you modify the grasp strategy for a cylindrical object vs a box?
 
----
 
 ## Troubleshooting
 
-- The container may take a while to build (several minutes). Instead of rebuilding the container from scratch, run
+- The container may take a while to build (several minutes). Instead of rebuilding the container from scratch, run `build`, which calls this alias:
 
 ```shell
 colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=Release"
