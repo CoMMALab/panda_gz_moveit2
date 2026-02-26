@@ -8,7 +8,7 @@ In this lab, you will extend the Panda robot simulation with perception and gras
 2. Configure the ROS-Gazebo bridge to publish point cloud data
 3. Implement object detection from point cloud data
 4. Implement grasp planning using MoveIt's pick/place functionality
-5. (Bonus) Integrate GPD to explore learned grasp candidates
+5. Integrate GPD for learned 6-DoF grasp candidate ranking
 
 ## Prerequisites
 
@@ -29,8 +29,10 @@ Submit a PDF document containing:
 
 1. Screenshots of each deliverable as specified
 2. Your completed `object_detector.py` code
-3. Your completed `grasp_planner.py` code
+3. Your completed `grasp_planner.py` code (including GPD integration for Part 4)
 4. Written answers to all questions
+
+**Point breakdown:** Part 1 (15) + Part 2 (30) + Part 3 (30) + Part 4 (25) = **100 points**
 
 ---
 
@@ -203,7 +205,7 @@ Place `camera_tf` inside `panda_moveit_config/launch/ex_gz_control.launch.py`, u
 
 Launch the system and take a screenshot of RViz showing the point cloud visualization with the table and objects visible. Verify the frame was added to the TF2 tree: run `ros2 run tf2_tools view_frames` and take a screenshot that clearly shows the edge `world -> overhead_camera_link` and paste it in your PDF.
 
-## Part 2: Implementing Object Detection (35 points)
+## Part 2: Implementing Object Detection (30 points)
 
 In this part you will write the core logic of the **`ObjectDetector`** node so that a single object on the tabletop is detected and added to the MoveIt planning scene as a collision box. Open
 
@@ -229,7 +231,7 @@ Your job is to complete the following functions, marked with numbered TODOs in t
 
 Complete them in order, then run your script.
 
-## Part 3: Implementing Grasp Planning (35 points)
+## Part 3: Implementing Grasp Planning (30 points)
 
 ### Step 3.1: Understand the Grasp Planner
 
@@ -291,13 +293,13 @@ ros2 run panda_moveit_config grasp_planner.py
 
 ---
 
-## Bonus: 6-DoF Grasp Planning with GPD (20 points)
+## Part 4: 6-DoF Grasp Planning with GPD (25 points)
 
 Parts 1–3 use a hand-crafted top-down grasp that works only for upright objects.
 **Grasp Pose Detection (GPD)** replaces that heuristic with a learned approach: it
 scores grasp candidates from a point cloud with a CNN and returns ranked 6-DoF poses.
 
-In this bonus you will extend your `grasp_planner.py` to call GPD and attempt its
+In this part you will extend your `grasp_planner.py` to call GPD and attempt its
 candidates before falling back to the top-down grasp you already implemented.
 
 ### How GPD works
@@ -331,46 +333,12 @@ from grasp_planner_gpd import GPDInterface, sample_cuboid_surface, write_pcd_asc
 - **`sample_cuboid_surface(center, dims, n_points)`** — samples a synthetic point cloud from the bounding box of the detected object and returns an `(N, 3)` numpy array.
 - **`write_pcd_ascii(points, path)`** — writes the array to a PCD file for GPD to consume.
 
-### GPD → Panda TCP frame convention
-
-GPD's orientation matrix `R` has columns with the following meaning:
-
-```
-col 0 = approach direction (toward the object surface)
-col 1 = binormal
-col 2 = hand/finger-closing axis
-```
-
-The Panda `panda_hand_tcp` frame axes are:
-
-```
-x  =  finger-closing axis  →  GPD col 2
-y  =  ???                  →  ???          (TODO B.1)
-z  =  approach             →  GPD col 0
-```
-
-### Step B.1: Implement the frame transformation (TODO B.1)
-
-Add a static method `gpd_grasp_to_pose(pos, R_gpd, depth_offset=0.03)` to your
-`GraspPlanner` class that converts a GPD candidate into a Panda TCP `Pose`.
-
-**Your task:** fill in the `y` column of `R_panda` and explain your choice.
-
-Hints:
-- The result must be a valid rotation matrix: `det(R_panda) = +1`.
-- The `depth_offset` shifts the TCP forward along the approach axis (`col 0`) so the fingers reach proper depth. GPD's `pos` is the surface contact point, not the TCP centre.
-- Use `tf_transformations.quaternion_from_matrix` to convert the 3×3 rotation to a quaternion.
-
-**Deliverable B.1 (written):** What is the `y` column of `R_panda` in terms of GPD columns, and why? What goes wrong if `det(R_panda) = -1`?
-
-### Step B.2: Integrate GPD into your pick sequence
-
 Modify the `pick()` method so that before attempting the top-down grasp it:
 
 1. Loads `GPDInterface` from the path in a ROS parameter `gpd_lib` (default `''`).
 2. Samples a point cloud from the object bounding box using `sample_cuboid_surface`.
 3. Calls `GPDInterface.detect()` to get ranked candidates.
-4. Iterates through candidates, converting each with `_gpd_grasp_to_pose` and attempting a pre-grasp → grasp descent sequence.
+4. Iterates through candidates, converting each with `gpd_grasp_to_pose` and attempting a pre-grasp → grasp descent sequence.
 5. Falls back to the top-down grasp if no candidate succeeds or if `gpd_lib` is empty.
 
 The GPD config file is pre-installed; pass its path via a `gpd_config` ROS parameter.
@@ -383,10 +351,7 @@ ros2 run panda_moveit_config grasp_planner.py --ros-args \
   -p gpd_lib:=/root/ws/src/panda_gz_moveit2/deps/gpd/build/libgpd_python.so
 ```
 
-**Deliverable B.2:** Take a screenshot of RViz showing the ranked GPD candidates
-visualised as arrows on the object. Report the scores of the top 5 candidates.
-Describe what you observe when the arm attempts the top-ranked candidate — does it
-succeed or fail, and why?
+**Deliverable 4:** Report the scores of the top 5 GPD candidates. Describe what you observe when the arm attempts the top-ranked candidate — does it succeed or fail, and why?
 
 ---
 
