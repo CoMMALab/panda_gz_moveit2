@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" &>/dev/null && pwd)"
+# macOS-compatible readlink -f alternative
+realpath_portable() {
+    local path="$1"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # macOS: use python as fallback since readlink -f doesn't exist
+        python3 -c "import os; print(os.path.realpath('$path'))"
+    else
+        readlink -f "$path"
+    fi
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath_portable "${BASH_SOURCE[0]}")")" &>/dev/null && pwd)"
 PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
 
-# Use project directory name as image tag (no hardcoded prefix)
-TAG="$(basename "${PROJECT_DIR}")"
+# Fixed image tag
+TAG="panda_gz_moveit2"
 
 ## Forward custom volumes and environment variables
 CUSTOM_VOLUMES=()
 CUSTOM_ENVS=()
+GPU_OPT=()
+GPU_ENVS=()
 while getopts ":v:e:" opt; do
     case "${opt}" in
         v) CUSTOM_VOLUMES+=("${OPTARG}") ;;
@@ -33,15 +46,17 @@ if [ "${#}" -gt "0" ]; then
 fi
 
 ## GPU
-# Check for NVIDIA GPU and verify container toolkit is available
-LS_HW_DISPLAY=$(lshw -C display 2>/dev/null | grep vendor)
-if [[ ${LS_HW_DISPLAY^^} =~ NVIDIA ]]; then
+# Check for NVIDIA GPU and verify container toolkit is available (Linux only)
+if [[ "$(uname)" == "Linux" ]]; then
+    LS_HW_DISPLAY=$(lshw -C display 2>/dev/null | grep vendor)
+fi
+if [[ "$(echo "${LS_HW_DISPLAY:-}" | tr '[:lower:]' '[:upper:]')" =~ NVIDIA ]]; then
     # Test if NVIDIA container toolkit is working
     if docker run --rm --gpus all nvidia/cuda:11.0.3-base-ubuntu20.04 nvidia-smi &>/dev/null; then
         if dpkg --compare-versions "$(docker version --format '{{.Server.Version}}')" gt "19.3"; then
-            GPU_OPT="--gpus all"
+            GPU_OPT=("--gpus" "all")
         else
-            GPU_OPT="--runtime nvidia"
+            GPU_OPT=("--runtime" "nvidia")
         fi
         GPU_ENVS=(
             NVIDIA_VISIBLE_DEVICES="all"
@@ -71,9 +86,15 @@ fi
 # GUI-enabling volumes
 GUI_VOLUMES=(
     "${XAUTH}:${XAUTH}"
-    "/tmp/.X11-unix:/tmp/.X11-unix"
-    "/dev/input:/dev/input"
 )
+# X11 socket and input devices (Linux only)
+if [[ "$(uname)" == "Linux" ]]; then
+    GUI_VOLUMES+=("/tmp/.X11-unix:/tmp/.X11-unix")
+    GUI_VOLUMES+=("/dev/input:/dev/input")
+elif [[ -d "/tmp/.X11-unix" ]]; then
+    # macOS with XQuartz may have this
+    GUI_VOLUMES+=("/tmp/.X11-unix:/tmp/.X11-unix")
+fi
 # GUI-enabling environment variables
 GUI_ENVS=(
     XAUTHORITY="${XAUTH}"
@@ -82,8 +103,10 @@ GUI_ENVS=(
 )
 
 ## Additional volumes
-# Synchronize timezone with host
-CUSTOM_VOLUMES+=("/etc/localtime:/etc/localtime:ro")
+# Synchronize timezone with host (Linux only - macOS handles this differently)
+if [[ "$(uname)" == "Linux" && -f "/etc/localtime" ]]; then
+    CUSTOM_VOLUMES+=("/etc/localtime:/etc/localtime:ro")
+fi
 
 ## Additional environment variables
 # Synchronize ROS_DOMAIN_ID with host
@@ -118,18 +141,32 @@ DOCKER_RUN_CMD=(
     --ipc host
     --privileged
     --security-opt "seccomp=unconfined"
-    -v $(pwd):/root/ws/src/panda_gz_moveit2:rw
-    "${GUI_VOLUMES[@]/#/"--volume "}"
-    "${GUI_ENVS[@]/#/"--env "}"
-    "${GPU_OPT}"
-    "${GPU_ENVS[@]/#/"--env "}"
-    "${CUSTOM_VOLUMES[@]/#/"--volume "}"
-    "${CUSTOM_ENVS[@]/#/"--env "}"
-    "${TAG}"
-    "${CMD}"
+    -v "$(pwd):/root/ws/src/panda_gz_moveit2:rw"
 )
+# Add GUI volumes
+for vol in "${GUI_VOLUMES[@]}"; do
+    DOCKER_RUN_CMD+=("--volume" "${vol}")
+done
+# Add GUI environment variables
+for env in "${GUI_ENVS[@]}"; do
+    DOCKER_RUN_CMD+=("--env" "${env}")
+done
+# Add GPU options only if set
+if [ ${#GPU_OPT[@]} -gt 0 ]; then
+    DOCKER_RUN_CMD+=("${GPU_OPT[@]}")
+fi
+for env in "${GPU_ENVS[@]:-}"; do
+    [ -n "${env}" ] && DOCKER_RUN_CMD+=("--env" "${env}")
+done
+for vol in "${CUSTOM_VOLUMES[@]:-}"; do
+    [ -n "${vol}" ] && DOCKER_RUN_CMD+=("--volume" "${vol}")
+done
+for env in "${CUSTOM_ENVS[@]:-}"; do
+    [ -n "${env}" ] && DOCKER_RUN_CMD+=("--env" "${env}")
+done
+DOCKER_RUN_CMD+=("${TAG}")
+[ -n "${CMD:-}" ] && DOCKER_RUN_CMD+=("${CMD}")
 
-echo -e "\033[1;30m${DOCKER_RUN_CMD[*]}\033[0m" | xargs
+echo -e "\033[1;30m${DOCKER_RUN_CMD[*]}\033[0m"
 
-# shellcheck disable=SC2048
-exec ${DOCKER_RUN_CMD[*]}
+exec "${DOCKER_RUN_CMD[@]}"

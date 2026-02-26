@@ -34,3 +34,4 @@ ros2 launch panda_moveit_config ex_gz_control.launch.py
 ## Labs
 
 - [Lab 01](labs/LAB01.md) — MoveIt 2 motion planning
+- [Lab 02](labs/LAB02.md) — Perception and Grasping

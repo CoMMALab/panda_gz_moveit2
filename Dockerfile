@@ -12,7 +12,7 @@ ENV WS_INSTALL_DIR=${WS_DIR}/install
 ENV WS_LOG_DIR=${WS_DIR}/log
 WORKDIR ${WS_DIR}
 
-### Install Gazebo, graphics libraries, and GPD dependencies
+### Install Gazebo, graphics libraries, GPD, and VNC for remote display
 RUN apt-get update && \
     apt-get install -yq --no-install-recommends \
     ros-${ROS_DISTRO}-ros-gz \
@@ -28,6 +28,10 @@ RUN apt-get update && \
     libpcl-dev \
     libopencv-dev \
     libeigen3-dev && \
+    tigervnc-standalone-server \
+    tigervnc-tools \
+    openbox \
+    xterm && \
     rm -rf /var/lib/apt/lists/*
 
 ### NVIDIA environment variables for graphics
