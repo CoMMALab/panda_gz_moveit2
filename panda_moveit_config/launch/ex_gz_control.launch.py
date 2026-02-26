@@ -111,7 +111,27 @@ def generate_launch_description() -> LaunchDescription:
         ),
     ]
 
-    return LaunchDescription(declared_arguments + launch_descriptions + nodes)
+    # !REMOVE!
+    camera_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        arguments=[
+            '0.6', '0.0', '1.05',  # x y z
+            '0', '1.5708', '0',    # roll pitch yaw
+            'world',               # parent frame
+            'overhead_camera_link' # child frame
+        ]
+    )
+
+    # !REMOVE!
+    # object_detector = Node(
+    #     package='panda_moveit_config',
+    #     executable='object_detector.py',
+    #     output='screen'
+    # )
+
+    ld = LaunchDescription([camera_tf] + declared_arguments + launch_descriptions + nodes)
+    return ld
 
 
 def generate_declared_arguments() -> List[DeclareLaunchArgument]:

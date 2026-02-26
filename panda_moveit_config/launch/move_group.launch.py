@@ -17,6 +17,7 @@ from launch.substitutions import (
     PythonExpression,
 )
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -98,7 +99,7 @@ def generate_launch_description():
             gazebo_preserve_fixed_joint,
         ]
     )
-    robot_description = {"robot_description": _robot_description_xml}
+    robot_description = {"robot_description": ParameterValue(_robot_description_xml, value_type=str)}
 
     # SRDF
     _robot_description_semantic_xml = Command(
@@ -121,7 +122,7 @@ def generate_launch_description():
         ]
     )
     robot_description_semantic = {
-        "robot_description_semantic": _robot_description_semantic_xml
+        "robot_description_semantic": ParameterValue(_robot_description_semantic_xml, value_type=str)
     }
 
     # Kinematics
@@ -198,9 +199,8 @@ def generate_launch_description():
     trajectory_execution = {
         "allow_trajectory_execution": True,
         "moveit_manage_controllers": False,
-        "trajectory_execution.allowed_execution_duration_scaling": 1.2,
-        "trajectory_execution.allowed_goal_duration_margin": 0.5,
-        "trajectory_execution.allowed_start_tolerance": 0.01,
+        "trajectory_execution.execution_duration_monitoring": False,
+        "trajectory_execution.allowed_start_tolerance": 0.0,
     }
 
     # Controller parameters
@@ -264,7 +264,7 @@ def generate_launch_description():
         Node(
             package="moveit_ros_move_group",
             executable="move_group",
-            output="log",
+            output="screen",
             arguments=["--ros-args", "--log-level", log_level],
             parameters=[
                 robot_description,

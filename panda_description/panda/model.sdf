@@ -634,12 +634,15 @@
         </geometry>
         <surface>
           <contact>
-            <ode/>
+            <ode>
+              <max_vel>0.0</max_vel>
+              <min_depth>0.001</min_depth>
+            </ode>
           </contact>
           <friction>
             <ode>
-              <mu>1.1299999999999999</mu>
-              <mu2>1.1299999999999999</mu2>
+              <mu>50.0</mu>
+              <mu2>50.0</mu2>
             </ode>
           </friction>
         </surface>
@@ -706,12 +709,15 @@
         </geometry>
         <surface>
           <contact>
-            <ode/>
+            <ode>
+              <max_vel>0.0</max_vel>
+              <min_depth>0.001</min_depth>
+            </ode>
           </contact>
           <friction>
             <ode>
-              <mu>1.1299999999999999</mu>
-              <mu2>1.1299999999999999</mu2>
+              <mu>50.0</mu>
+              <mu2>50.0</mu2>
             </ode>
           </friction>
         </surface>
