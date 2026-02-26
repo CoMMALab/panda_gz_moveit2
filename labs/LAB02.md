@@ -28,9 +28,11 @@ Complete Lab 01 and ensure your environment is working. Use the same Docker cont
 Submit a PDF document containing:
 
 1. Screenshots of each deliverable as specified
-2. Your completed `object_detector.py` code
-3. Your completed `grasp_planner.py` code (including GPD integration for Part 4)
-4. Written answers to all questions
+2. Written answers to all questions
+
+And a ZIP file containing:
+3. Your completed `object_detector.py` code
+4. Your completed `grasp_planner.py` code (including GPD integration for Part 4)
 
 **Point breakdown:** Part 1 (15) + Part 2 (30) + Part 3 (30) + Part 4 (25) = **100 points**
 
