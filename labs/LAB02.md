@@ -31,6 +31,7 @@ Submit a PDF document containing:
 2. Written answers to all questions
 
 And a ZIP file containing:
+
 3. Your completed `object_detector.py` code
 4. Your completed `grasp_planner.py` code (including GPD integration for Part 4)
 
