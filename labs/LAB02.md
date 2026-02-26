@@ -8,10 +8,20 @@ In this lab, you will extend the Panda robot simulation with perception and gras
 2. Configure the ROS-Gazebo bridge to publish point cloud data
 3. Implement object detection from point cloud data
 4. Implement grasp planning using MoveIt's pick/place functionality
+5. Integrate GPD for learned 6-DoF grasp candidate ranking
 
 ## Prerequisites
 
 Complete Lab 01 and ensure your environment is working. Use the same Docker container.
+
+> **Tip:** The container includes the following aliases:
+>
+> | Alias | Description |
+> |-------|-------------|
+> | `launch_ctrl` | Launch Gazebo + MoveIt 2 + RViz |
+> | `launch_detector` | Run the tabletop object detector |
+> | `launch_planner` | Run the grasp planner |
+> | `build` | Rebuild the ROS workspace |
 
 ## Submission Requirements
 
@@ -19,8 +29,10 @@ Submit a PDF document containing:
 
 1. Screenshots of each deliverable as specified
 2. Your completed `object_detector.py` code
-3. Your completed `grasp_planner.py` code
+3. Your completed `grasp_planner.py` code (including GPD integration for Part 4)
 4. Written answers to all questions
+
+**Point breakdown:** Part 1 (15) + Part 2 (30) + Part 3 (30) + Part 4 (25) = **100 points**
 
 ---
 
@@ -76,16 +88,6 @@ Open `panda_description/worlds/tabletop.sdf` and add the following camera model 
 </model>
 ```
 
-### Step 1.2: Understand the Camera Configuration
-
-**Deliverable 1.1:** Answer these questions about the camera configuration:
-
-1. What is the camera's position in world coordinates (x, y, z)?
-2. The pose includes orientation `0 1.5708 0` (roll, pitch, yaw in radians). What direction is the camera pointing?
-3. What is the camera's horizontal field of view in degrees? (Hint: convert from radians)
-
-### Step 1.3: Verify Camera Topics
-
 Launch the simulation and list Gazebo topics:
 
 ```shell
@@ -98,241 +100,270 @@ In another terminal:
 gz topic -l | grep overhead
 ```
 
-**Deliverable 1.2:** What Gazebo topics does the camera publish? List all topics containing "overhead".
+**Deliverable 1.1:** What Gazebo topics does the camera publish? List all topics containing "overhead".
 
----
+### Step 1.2: The Camera Model
 
-## Part 2: Bridging Camera Data to ROS 2 (15 points)
+The camera model consists of a 6-DoF pose `P = (x, y, z, e_x, e_y, e_z)` where `(x, y, z)` is the camera location and `(e_x, e_y, e_z)` is the camera rotation, and a 4x4 camera intrinsic matrix `K`. To convert depth images into point clouds, Gazebo inverts the projection from 3D camera coordinates to the image plane.
 
-### Step 2.1: Configure the Bridge
+**Homogeneous Transformation**
+
+`P` is often represented as a 4x4 homogeneous matrix:
+
+```
+T = [[R     t]
+     [0 0 0 1]]
+```
+
+where `t` is the 3D camera position and `R` must be a valid (orthogonal) 3x3 rotation matrix.
+The Rodriguez formula for XYZ-ordered Euler angles is as follows:
+
+```
+R =
+[[ cos(e_z)cos(e_y),
+   cos(e_z)sin(e_y)sin(e_x) - sin(e_z)cos(e_x),
+   cos(e_z)sin(e_y)cos(e_x) + sin(e_z)sin(e_x) ],
+
+ [ sin(e_z)cos(e_y),
+   sin(e_z)sin(e_y)sin(e_x) + cos(e_z)cos(e_x),
+   sin(e_z)sin(e_y)cos(e_x) - cos(e_z)sin(e_x) ],
+
+ [ -sin(e_y),
+   cos(e_y)sin(e_x),
+   cos(e_y)cos(e_x) ]]
+```
+
+**Deliverable 1.2.1:** What is the 4x4 homogeneous transform given the pose of the camera model from 1.1?
+
+**Intrinsic Matrix**
+
+The intrinsic matrix, sometimes called the _projection_, is a 3x3 matrix specific to a camera. It includes information like focal length `f` and optical center `(c_x, c_y)`. It is expressed as:
+
+```
+K = [[f, 0, c_x],
+     [0, f, c_y],
+     [0, 0, 1  ]]
+```
+
+The focal length can be computed from the camera width and horizontal FoV using trigonometry:
+
+```
+f = w/(2*tan(theta/2))
+```
+
+We assume `f_x = f_y`, but in general if both vertical and horizontal FoV's are known, their focal lengths may differ. Finally, assume the optical center is the center pixel of the image.
+
+**Deliverable 1.2.2:** What is the camera intrinsic matrix of the camera model from 1.1?
+
+### Step 1.3: Bridging Points and Publishing Transforms
 
 Open `panda_moveit_config/config/gz_bridge.yaml` and add an entry to bridge the point cloud topic.
 
 The bridge entry format is:
 
 ```yaml
-- ros_topic_name: <ros_topic_name>
+- ros_topic_name: <ros_tf2_name>
   gz_topic_name: <gazebo_topic_name>
-  ros_type_name: <ros_message_type>
-  gz_type_name: <gazebo_message_type>
+  ros_type_name: sensor_msgs/msg/PointCloud2
+  gz_type_name: gz.msgs.PointCloudPacked
   direction: GZ_TO_ROS
 ```
 
-For the point cloud:
-- Gazebo topic: `/overhead_camera/points` (verify with `gz topic -l`)
-- ROS message type: `sensor_msgs/msg/PointCloud2`
-- Gazebo message type: `gz.msgs.PointCloudPacked`
-
-**Deliverable 2.1:** Show your complete `gz_bridge.yaml` with the new entry.
-
-### Step 2.2: Verify the Bridge
-
-Relaunch the simulation and verify the topic appears in ROS 2:
+Where `<gazebo_topic_name>` is the name from part 1.1. Pick a reasonable `<ros_topic_name>`, e.g. `/point_cloud`. Relaunch the simulation and verify the topic appears in ROS 2:
 
 ```shell
-ros2 topic list | grep -i point
-ros2 topic info <your_topic>
+ros2 topic list | grep -i <ros_topic_name>
 ```
 
-**Deliverable 2.2:** Take a screenshot showing `ros2 topic info` output for your point cloud topic.
+Try adding the point cloud to the display. You will see an error:
 
-### Step 2.3: Visualize in RViz
+"Could not transform from [overhead_camera_link] to [panda_link0]"
 
-In RViz, add a PointCloud2 display and set the topic to your bridged point cloud.
+We published the point cloud, but it could not be transformed to the correct world coordinate system. The problem is that though `<gazebo_topic_name>` is visible internally to Gazebo, it does not publish automatically to the global transform tree [TF2](https://docs.ros.org/en/jazzy/Concepts/Intermediate/About-Tf2.html).
 
-**Deliverable 2.3:** Take a screenshot of RViz showing the point cloud visualization with the table and objects visible.
+**Deliverable 1.3.1**
 
----
-
-## Part 3: Implementing Object Detection (35 points)
-
-### Step 3.1: Understand the Skeleton
-
-Open `panda_moveit_config/scripts/object_detector.py`. This skeleton has 5 TODOs:
-
-| TODO | Description |
-|------|-------------|
-| 1 | Create subscriber to point cloud topic |
-| 2 | Filter point cloud (remove table, floor, etc.) |
-| 3 | Cluster points into separate objects |
-| 4 | Compute bounding boxes for each cluster |
-| 5 | Store and publish detected objects |
-
-### Step 3.2: Implement TODO 1 - Subscriber
-
-Create a subscription to your point cloud topic:
+Launch a new node camera_tf that publishes the static transform from the world frame to the camera frame.
+You can launch nodes programmatically using the following syntax.
 
 ```python
-self.pc_sub = self.create_subscription(
-    PointCloud2,
-    '/your_topic_name',  # Use the topic from Part 2
-    self.point_cloud_callback,
-    10
+camera_tf = Node(
+  package    ='tf2_ros',
+  executable = '<fill-in>',          # discover with:  `ros2 pkg executables tf2_ros`
+  arguments  = [
+    '0.5', '0.0', '1.5',             # x y z   (from the SDF pose)
+    '0',   '1.5708', '0',            # roll pitch yaw
+    'world',                         # parent frame
+    'overhead_camera_link'           # child frame
+  ]
 )
 ```
 
-### Step 3.3: Implement TODO 2 - Filtering
+Place `camera_tf` inside `panda_moveit_config/launch/ex_gz_control.launch.py`, under the `generate_launch_description` function, and add it to the returned `LaunchDescription([camera_tf] + other_nodes...)`.
 
-Filter the point cloud to isolate objects:
+**Deliverable 1.3.2** 
 
-1. Points come in the **camera frame** (camera at z=1.5, looking down)
-2. Transform or threshold appropriately to:
-   - Remove floor points (z ≈ 0 in world frame)
-   - Remove table surface (z ≈ 0.42 in world frame)
-   - Keep only points above the table (objects)
+Launch the system and take a screenshot of RViz showing the point cloud visualization with the table and objects visible. Verify the frame was added to the TF2 tree: run `ros2 run tf2_tools view_frames` and take a screenshot that clearly shows the edge `world -> overhead_camera_link` and paste it in your PDF.
 
-**Hint:** In camera frame, the table surface is approximately 1.08m from the camera.
+## Part 2: Implementing Object Detection (30 points)
 
-### Step 3.4: Implement TODO 3 - Clustering
-
-Use scipy's hierarchical clustering:
-
-```python
-from scipy.cluster.hierarchy import fclusterdata
-
-def cluster_points(self, points, distance_threshold=0.05):
-    if len(points) < 2:
-        return [points]
-    labels = fclusterdata(points, t=distance_threshold, criterion='distance')
-    return [points[labels == i] for i in np.unique(labels)]
-```
-
-### Step 3.5: Implement TODO 4 - Bounding Boxes
-
-Compute axis-aligned bounding boxes:
-
-```python
-def compute_bounding_box(self, points):
-    min_pt = points.min(axis=0)
-    max_pt = points.max(axis=0)
-
-    center = Pose()
-    center.position.x = (min_pt[0] + max_pt[0]) / 2
-    center.position.y = (min_pt[1] + max_pt[1]) / 2
-    center.position.z = (min_pt[2] + max_pt[2]) / 2
-    center.orientation.w = 1.0
-
-    dimensions = (max_pt - min_pt).tolist()
-    return center, dimensions
-```
-
-### Step 3.6: Test Your Detector
-
-Run the detector:
+In this part you will write the core logic of the **`ObjectDetector`** node so that a single object on the tabletop is detected and added to the MoveIt planning scene as a collision box. Open
 
 ```shell
-ros2 run panda_moveit_config object_detector.py
-```
+panda_moveit_config/scripts/object_detector.py
+```  
 
-**Deliverable 3.1:** Take a screenshot of RViz showing detected objects appearing as collision boxes in the planning scene.
+This file contains:
 
-**Deliverable 3.2:** Include your completed `object_detector.py` in your submission.
+* A subscriber on `/point_cloud`
+* Utility functions to convert point clouds, build bounding boxes, and **publish them**.
 
----
+**Deliverable 2**
 
-## Part 4: Implementing Grasp Planning (35 points)
+Your job is to complete the following functions, marked with numbered TODOs in the file:
 
-### Step 4.1: Understand the Grasp Planner
+| TODO | Function | Description |
+|------|----------|-------------|
+| 2.1 | `build_transform` | Build a 4×4 homogeneous transform from a TF translation and quaternion |
+| 2.2 | `transform_points` | Apply the transform to convert camera-frame points to world frame |
+| 2.3 | `filter_points` | Remove table and floor points, keeping only object points |
+| 2.4 | `compute_bounding_box` | Compute an axis-aligned bounding box from the filtered object points |
 
-Open `panda_moveit_config/scripts/grasp_planner.py`. This skeleton has 7 TODOs:
+Complete them in order, then run your script.
+
+## Part 3: Implementing Grasp Planning (30 points)
+
+### Step 3.1: Understand the Grasp Planner
+
+Open `panda_moveit_config/scripts/grasp_planner.py`. This node uses MoveIt's `MoveGroup` action to plan and execute arm motions, and a `FollowJointTrajectory` action for gripper control. The pick-and-place sequence is built from simple Cartesian pose targets with z-offsets for approach and retreat.
+
+The skeleton has 3 TODOs:
 
 | TODO | Description |
 |------|-------------|
-| 1 | Set grasp pose (end-effector target position) |
-| 2 | Set pre-grasp approach direction |
-| 3 | Set post-grasp retreat direction |
-| 4 | Set place pose |
-| 5 | Set pre-place approach direction |
-| 6 | Set post-place retreat direction |
-| 7 | Implement main pick-and-place logic |
+| 1 | Define the top-down gripper orientation as a quaternion |
+| 2 | Construct the pre-grasp pose (above the object) |
+| 3 | Construct the grasp pose (descend to the object) |
 
-### Step 4.2: Implement Grasp Pose (TODO 1)
+The `place()` method is provided as a reference implementation — read it carefully, as its structure is a hint for how to implement `pick()`.
 
-For a top-down grasp, position the gripper above the object:
+### Step 3.2: Top-Down Orientation (TODO 1)
 
-```python
-grasp.grasp_pose.pose.position.x = object_pose.position.x
-grasp.grasp_pose.pose.position.y = object_pose.position.y
-grasp.grasp_pose.pose.position.z = object_pose.position.z + 0.1  # Above object
+The `panda_hand` frame has its z-axis pointing along the fingers. To point the gripper straight down, you need a 180-degree rotation about the x-axis. Express this as a unit quaternion and assign it to `TOP_DOWN_ORIENTATION`.
 
-# Orientation: gripper pointing down
-# Panda hand frame: z points forward (along fingers)
-# For top-down: rotate 180° around x-axis
-grasp.grasp_pose.pose.orientation.x = 1.0
-grasp.grasp_pose.pose.orientation.y = 0.0
-grasp.grasp_pose.pose.orientation.z = 0.0
-grasp.grasp_pose.pose.orientation.w = 0.0
+**Hint:** Recall that a rotation of angle `theta` about axis `(ux, uy, uz)` has the quaternion representation `(x, y, z, w) = (ux*sin(theta/2), uy*sin(theta/2), uz*sin(theta/2), cos(theta/2))`.
+
+### Step 3.3: Implement the Pick Sequence (TODOs 2, 3)
+
+Inside the `pick()` method, you need to construct two `Pose` targets:
+
+1. **Pre-grasp pose (TODO 2):** Position the gripper some distance above the object using the top-down orientation. Use `move_arm_to_pose()` to move there.
+
+2. **Grasp pose (TODO 3):** Descend closer to the object so the fingers can close around it. Use the `acm_object_id` parameter of `move_arm_to_pose()` to allow gripper-object collisions during this motion.
+
+The rest of the pick (close gripper, attach object, retreat) is provided.
+
+**Hint:** Think about what z-offsets make sense. Too high and the gripper won't reach the object; too low and you'll collide with the table. Study `place()` to see what offsets work for a similar sequence.
+
+### Step 3.5: Test Pick and Place
+
+The `main()` function is provided: it waits for the object detector to publish a collision object, then calls `pick_and_place()` with the detected pose and a fixed placement location. You do not need to modify `main()`.
+
+Run the grasp planner:
+
+```shell
+ros2 run panda_moveit_config grasp_planner.py
 ```
 
-### Step 4.3: Implement Approach/Retreat (TODOs 2, 3)
-
-```python
-# Pre-grasp: approach from above (negative z)
-grasp.pre_grasp_approach.direction.vector.z = -1.0
-grasp.pre_grasp_approach.min_distance = 0.05
-grasp.pre_grasp_approach.desired_distance = 0.1
-
-# Post-grasp: retreat upward (positive z)
-grasp.post_grasp_retreat.direction.vector.z = 1.0
-grasp.post_grasp_retreat.min_distance = 0.05
-grasp.post_grasp_retreat.desired_distance = 0.1
-```
-
-### Step 4.4: Implement Place Location (TODOs 4, 5, 6)
-
-Similar to grasp, but for placing:
-
-```python
-place.place_pose.pose = place_pose
-
-# Pre-place: approach from above
-place.pre_place_approach.direction.vector.z = -1.0
-place.pre_place_approach.min_distance = 0.05
-place.pre_place_approach.desired_distance = 0.1
-
-# Post-place: retreat upward
-place.post_place_retreat.direction.vector.z = 1.0
-place.post_place_retreat.min_distance = 0.05
-place.post_place_retreat.desired_distance = 0.1
-```
-
-### Step 4.5: Implement Main Logic (TODO 7)
-
-Create a simple test that picks up a detected object and places it elsewhere:
-
-```python
-# Example: Pick detected_object_0 and place at new location
-object_pose = Pose()
-object_pose.position.x = 0.4  # Get from detector
-object_pose.position.y = 0.2
-object_pose.position.z = 0.495
-
-place_pose = Pose()
-place_pose.position.x = 0.6
-place_pose.position.y = 0.0
-place_pose.position.z = 0.5
-
-node.pick_and_place('detected_object_0', object_pose, place_pose)
-```
-
-### Step 4.6: Test Pick and Place
-
-**Deliverable 4.1:** Take a sequence of screenshots showing:
+**Deliverable 3.1:** Take a sequence of screenshots showing:
 1. Initial state with detected objects
 2. Robot approaching an object
 3. Robot grasping the object
 4. Robot placing the object at a new location
 
-**Deliverable 4.2:** Include your completed `grasp_planner.py` in your submission.
+**Deliverable 3.2:** Include your completed `grasp_planner.py` in your submission.
 
-**Deliverable 4.3:** Answer these questions:
+**Deliverable 3.3:** After you get the pick-and-place planner working at least once, execute the grasp planner multiple times in sequence and record the maximum number of attempts you see succeed. What modeling assumption broke that explains the failure?
+
+**Deliverable 3.4:** Answer these questions:
 1. Why is the gripper orientation important for successful grasping?
-2. What happens if the approach distance is too short? Too long?
-3. How would you modify the grasp for a cylindrical object vs a box?
+2. What happens if the approach/retreat z-offset is too small? Too large?
+3. How would you modify the grasp strategy for a cylindrical object vs a box?
+
+
+---
+
+## Part 4: 6-DoF Grasp Planning with GPD (25 points)
+
+Parts 1–3 use a hand-crafted top-down grasp that works only for upright objects.
+**Grasp Pose Detection (GPD)** replaces that heuristic with a learned approach: it
+scores grasp candidates from a point cloud with a CNN and returns ranked 6-DoF poses.
+
+In this part you will extend your `grasp_planner.py` to call GPD and attempt its
+candidates before falling back to the top-down grasp you already implemented.
+
+### How GPD works
+
+GPD operates in three stages:
+
+1. **Candidate sampling** — random antipodal surface point pairs define candidate gripper poses.
+2. **Image encoding** — each candidate is projected into a 15-channel descriptor image encoding local geometry and normals.
+3. **CNN scoring** — a LeNet variant scores candidates; the top-ranked poses are returned.
+
+GPD's dependencies are pre-installed in the container. Build the shared library with:
+
+```shell
+cmake --build /root/ws/src/panda_gz_moveit2/deps/gpd/build --target gpd_python -j$(nproc)
+```
+
+You should see several targets quickly build. Two helper utilities are provided in `grasp_planner_gpd.py` that you can import:
+
+```python
+from grasp_planner_gpd import GPDInterface, sample_cuboid_surface, write_pcd_ascii
+```
+
+- **`GPDInterface(lib_path)`** — loads the library and exposes `detect(config, pcd, camera_pos)`, which returns a list of candidate dicts sorted by score (descending):
+  ```python
+  # Each candidate:
+  {'pos': np.ndarray[3],   # grasp position in world frame
+   'R':   np.ndarray[3,3], # orientation matrix (see frame convention below)
+   'score': float,
+   'antipodal': bool}
+  ```
+- **`sample_cuboid_surface(center, dims, n_points)`** — samples a synthetic point cloud from the bounding box of the detected object and returns an `(N, 3)` numpy array.
+- **`write_pcd_ascii(points, path)`** — writes the array to a PCD file for GPD to consume.
+
+Modify the `pick()` method so that before attempting the top-down grasp it:
+
+1. Loads `GPDInterface` from the path in a ROS parameter `gpd_lib` (default `''`).
+2. Samples a point cloud from the object bounding box using `sample_cuboid_surface`.
+3. Calls `GPDInterface.detect()` to get ranked candidates.
+4. Iterates through candidates, converting each with `gpd_grasp_to_pose` and attempting a pre-grasp → grasp descent sequence.
+5. Falls back to the top-down grasp if no candidate succeeds or if `gpd_lib` is empty.
+
+The GPD config file is pre-installed; pass its path via a `gpd_config` ROS parameter.
+
+Run with:
+
+```shell
+ros2 run panda_moveit_config grasp_planner.py --ros-args \
+  -p gpd_config:=/root/ws/src/panda_gz_moveit2/deps/gpd/cfg/eigen_params.cfg \
+  -p gpd_lib:=/root/ws/src/panda_gz_moveit2/deps/gpd/build/libgpd_python.so
+```
+
+**Deliverable 4:** Report the scores of the top 5 GPD candidates. Describe what you observe when the arm attempts the top-ranked candidate — does it succeed or fail, and why?
 
 ---
 
 ## Troubleshooting
+
+- The container may take a while to build (several minutes). Instead of rebuilding the container from scratch, run `build`, which calls this alias:
+
+```shell
+colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=Release"
+```
+
+you don't have to do this for Python files, you do usually have to do it for configuration changes.
 
 ### Point cloud not appearing
 - Verify `gz_bridge.yaml` syntax
@@ -346,13 +377,8 @@ node.pick_and_place('detected_object_0', object_pose, place_pose)
 ### Pick/Place fails
 - Check that object is in planning scene
 - Verify grasp pose is reachable
-- Try adjusting approach distances
-- Check gripper orientation
-
-### "No valid grasps found"
-- Grasp pose may be in collision
-- Try different approach angles
-- Ensure gripper can reach the object
+- Try adjusting z-offsets
+- Check gripper orientation quaternion
 
 ---
 
@@ -360,4 +386,3 @@ node.pick_and_place('detected_object_0', object_pose, place_pose)
 
 - [MoveIt Pick and Place Tutorial](https://moveit.picknik.ai/main/doc/examples/pick_place/pick_place_tutorial.html)
 - [sensor_msgs_py](https://docs.ros.org/en/rolling/p/sensor_msgs_py/)
-- [scipy clustering](https://docs.scipy.org/doc/scipy/reference/cluster.hierarchy.html)

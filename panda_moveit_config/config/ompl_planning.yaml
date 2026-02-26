@@ -126,6 +126,7 @@ planner_configs:
 arm:
   enforce_constrained_state_space: true
   projection_evaluator: joints(panda_joint1,panda_joint2)
+  simplify_solutions: true
   planner_configs:
     - SBLkConfigDefault
     - ESTkConfigDefault

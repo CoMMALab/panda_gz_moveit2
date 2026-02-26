@@ -61,30 +61,20 @@ class ObjectDetector(Node):
     # ---------------------------- deliverable --------------------------------
 
     @staticmethod
-    def build_transform(translation, rotation) -> np.ndarray:
-        """
-        Build a 4 × 4 homogeneous transform from a TF translation and quaternion.
-
-        Parameters
-        ----------
-        translation : geometry_msgs/Vector3
-            Camera position in the world frame (fields: x, y, z).
-        rotation : geometry_msgs/Quaternion
-            Camera orientation as a unit quaternion (fields: x, y, z, w).
-
-        Returns
-        -------
-        np.ndarray
-            4 × 4 homogeneous transform T such that
-            ``p_world = T @ [p_cam; 1]``.
-
-        Hint: use ``tf_transformations.quaternion_matrix([x, y, z, w])``
-        to obtain the rotation part, then fill in the translation column.
-        """
-        raise NotImplementedError('TODO 2.1: implement build_transform')
+    def transform_points(points: np.ndarray, T: np.ndarray):
+        raise NotImplementedError('Point transformation not implemented yet')
 
     @staticmethod
-    def transform_points(points: np.ndarray, T: np.ndarray) -> np.ndarray:
+    def filter_points(points, ):
+        raise NotImplementedError('Point filtering not implemented yet')
+
+    @staticmethod
+    def compute_bounding_box(filtered_points: np.ndarray) -> Tuple[Pose, np.ndarray]:
+        """Axis-aligned box → (Pose, [dx, dy, dz])."""
+        raise NotImplementedError('Bounding-box computation not implemented yet')
+
+    @staticmethod
+    def transform_points(points: np.ndarray, T: np.ndarray):
         """
         Transform a point-cloud from camera to world coordinates.
 
@@ -102,17 +92,17 @@ class ObjectDetector(Node):
         np.ndarray
             Shape (N, 3) array of the same points in the *world* frame.
         """
-        raise NotImplementedError('TODO 2.2: implement transform_points')
+        raise NotImplementedError('Point transformation not implemented yet')
 
     @staticmethod
-    def filter_points(points: np.ndarray) -> np.ndarray:
+    def filter_points(points: np.ndarray):
         """
         Remove table and floor points, keep only object points.
 
         Strategy
         --------
         • The table plane is assumed to be the *minimum* z-value in the world
-          frame.
+          frame.  
         • Retain points whose z > (table_z + 0.02 m).
 
         Parameters
@@ -125,7 +115,7 @@ class ObjectDetector(Node):
         np.ndarray
             Subset of `points` representing the object.
         """
-        raise NotImplementedError('TODO 2.3: implement filter_points')
+        raise NotImplementedError('Point filtering not implemented yet')
 
     @staticmethod
     def compute_bounding_box(filtered_points: np.ndarray) -> Tuple[Pose, np.ndarray]:
@@ -140,10 +130,10 @@ class ObjectDetector(Node):
         Returns
         -------
         (Pose, np.ndarray)
-            • Pose – centre of the box, orientation = identity
+            • Pose – centre of the box, orientation = identity  
             • ndarray – `[dx, dy, dz]` edge lengths (metres)
         """
-        raise NotImplementedError('TODO 2.4: implement compute_bounding_box')
+        raise NotImplementedError('Bounding-box computation not implemented yet')
 
     def point_cloud_callback(self, msg: PointCloud2):
         """
@@ -154,11 +144,113 @@ class ObjectDetector(Node):
         1. Convert the incoming cloud to `pts_cam`.
         2. Look up the camera pose (translation *p*, quaternion *q*) in TF,
            build `T = [R|t]`, and transform points to world coordinates.
-           Note: you may use `tf_transformations.quaternion_matrix` to get R from q.
         3. Identify the table plane as the minimum world-frame z; keep points
            ≥ 2 cm above it.
         4. Compute the axis-aligned bounding box of the remaining points and
            publish it via `publish_objects()`.
+        """
+        pts_cam = self.pointcloud2_to_xyz(msg)
+        if pts_cam is None or len(pts_cam) == 0:
+            return
+
+        # 1 · summary statistics in camera frame
+        self.get_logger().info(f"Received point cloud in frame '{msg.header.frame_id}'")
+        self.get_logger().info(f'Received point cloud with {pts_cam.shape[0]} points')
+
+        # 2 · transform to world frame
+        (p, q) = self.get_world_transform(msg)          # translation, quaternion
+        # TODO: build T from p, q and transform points to world frame
+        #       note you may use `tf_transformations.quaternion_matrix` to get the rotation matrix from q
+        pts_world = self.transform_points(pts_cam, T)
+
+        # 3 · height-based filtering
+        obj_pts = self.filter_points(pts_world)
+
+        # publish filtered cloud for visualization / debugging
+        pc2_msg = self.make_pointcloud2_from_numpy(obj_pts, frame_id='world', max_points=15000)
+        if pc2_msg is not None:
+            self.filtered_pc_pub.publish(pc2_msg)
+            self.get_logger().debug(f'Published filtered point cloud with {obj_pts.shape[0]} points (decimated to {len(pc2_msg.data)//pc2_msg.point_step if pc2_msg.point_step else "?"})')
+
+        # 4 · bounding-box computation and publication
+        detected_object = self.compute_bounding_box(obj_pts)
+        self.publish_objects([detected_object])
+
+    # ---------------------------- !ANSWER! --------------------------------
+
+    @staticmethod
+    def transform_points(points: np.ndarray, T: np.ndarray) -> np.ndarray:
+        """
+        Apply a 4×4 homogeneous transform to an (N, 3) point cloud.
+
+        Parameters
+        ----------
+        points : np.ndarray
+            Camera–frame points, shape (N, 3).
+        T : np.ndarray
+            4 × 4 matrix that maps camera → world.
+
+        Returns
+        -------
+        np.ndarray
+            World–frame points, shape (N, 3).
+        """
+        ones = np.ones((points.shape[0], 1), dtype=points.dtype)
+        pts_h = np.hstack((points, ones))        # (N, 4)
+        pts_world = (T @ pts_h.T).T              # homogeneous → world
+        return pts_world[:, :3]
+
+    @staticmethod
+    def filter_points(points: np.ndarray) -> np.ndarray:
+        """
+        Keep only points that are ≥ 2 cm above the table plane.
+
+        The table plane is assumed to be the minimum z-value in the cloud.
+
+        Parameters
+        ----------
+        points : np.ndarray
+            World–frame points, shape (N, 3).
+
+        Returns
+        -------
+        np.ndarray
+            Filtered point cloud containing the object only.
+        """
+        table_z = np.min(points[:, 2])
+        mask = points[:, 2] > (table_z + 0.02)   # 2 cm clearance
+        return points[mask]
+
+    @staticmethod
+    def compute_bounding_box(filtered_points: np.ndarray) -> Tuple[Pose, np.ndarray]:
+        """
+        Compute an axis-aligned bounding box for the object.
+
+        Returns
+        -------
+        Pose
+            Centre of the box (world frame), orientation = identity.
+        np.ndarray
+            Edge lengths [dx, dy, dz] in metres.
+        """
+        mins = filtered_points.min(axis=0)
+        maxs = filtered_points.max(axis=0)
+
+        centre = (mins + maxs) / 2.0
+        dims = (maxs - mins).astype(np.float32)
+
+        pose = Pose(
+            position=Point(x=float(centre[0]),
+                           y=float(centre[1]),
+                           z=float(centre[2])),
+            orientation=Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+        )
+        return pose, dims
+
+    # ───────────────────────── main callback ───────────────────────────────────
+    def point_cloud_callback(self, msg: PointCloud2):
+        """
+        Pipeline: convert → transform → filter → bounding box → publish.
         """
         if self.paused:
             self.get_logger().debug('Skipping point cloud (paused)')
@@ -175,8 +267,10 @@ class ObjectDetector(Node):
         result = self.get_world_transform(msg)
         if result is None:
             return
-        p, q = result   # translation, quaternion
-        T = self.build_transform(p, q)
+        p, q = result                                              # translation, quaternion
+        T = tf_transformations.quaternion_matrix([q.x, q.y, q.z, q.w])
+        T[0:3, 3] = [p.x, p.y, p.z]
+
         pts_world = self.transform_points(pts_cam, T)
 
         # 3  Height-based filtering
