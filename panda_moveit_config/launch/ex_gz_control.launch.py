@@ -111,7 +111,6 @@ def generate_launch_description() -> LaunchDescription:
         ),
     ]
 
-    # !REMOVE!
     camera_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -123,7 +122,7 @@ def generate_launch_description() -> LaunchDescription:
         ]
     )
 
-    # !REMOVE!
+    # e.g. add to automatically launch the object_detector
     # object_detector = Node(
     #     package='panda_moveit_config',
     #     executable='object_detector.py',

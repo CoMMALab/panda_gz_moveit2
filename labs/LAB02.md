@@ -43,7 +43,7 @@ And a ZIP file containing:
 
 ### Step 1.1: Add an Overhead Camera
 
-Open `panda_description/worlds/tabletop.sdf` and add the following camera model **before** the closing `</world>` tag:
+Open `panda_description/worlds/tabletop.sdf`. This file contains scene geometry for a tabletop scene, as well as additional metadata such as lighting and the enabled Gazebo plugins. It also contains the "overhead_camera" model right before the closing `</world>` tag:
 
 ```xml
 <!-- Overhead RGBD Camera -->
@@ -368,7 +368,12 @@ colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=
 
 you don't have to do this for Python files, you do usually have to do it for configuration changes.
 
-### Point cloud not appearing
+### Point cloud topic exists but publishes no data (`gz topic -e` hangs)
+The RGBD camera requires GPU-accelerated rendering. Without it, the topic is registered but never fires.
+- On Linux with an NVIDIA GPU: install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) — the run script will detect it and add `--gpus all` automatically
+- Verify GPU support is active: the run script prints `NVIDIA GPU support enabled` when starting the container
+
+### Point cloud not appearing in RViz
 - Verify `gz_bridge.yaml` syntax
 - Check Gazebo topic name matches exactly
 - Ensure sensor is publishing: `gz topic -e -t /overhead_camera/points`
