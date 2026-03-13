@@ -372,6 +372,11 @@ you don't have to do this for Python files, you do usually have to do it for con
 The RGBD camera requires GPU-accelerated rendering. Without it, the topic is registered but never fires.
 - On Linux with an NVIDIA GPU: install [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) — the run script will detect it and add `--gpus all` automatically
 - Verify GPU support is active: the run script prints `NVIDIA GPU support enabled` when starting the container
+- If you cannot get the camera working, use the synthetic point cloud publisher as a drop-in replacement. In a separate terminal run:
+  ```shell
+  ros2 run panda_moveit_config synthetic_point_cloud.py
+  ```
+  This publishes a simulated tabletop scene to `/point_cloud` in the correct camera frame. All four `object_detector.py` functions work exactly as normal.
 
 ### Point cloud not appearing in RViz
 - Verify `gz_bridge.yaml` syntax
