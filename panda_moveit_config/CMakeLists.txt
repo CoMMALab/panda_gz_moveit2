@@ -16,6 +16,7 @@ install(PROGRAMS
   scripts/object_detector.py
   scripts/grasp_planner.py
   scripts/grasp_planner_gpd.py
+  scripts/synthetic_point_cloud.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
