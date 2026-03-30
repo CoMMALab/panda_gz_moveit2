@@ -101,35 +101,17 @@ def generate_launch_description() -> LaunchDescription:
                 )},
             ],
         ),
-        # Scene publisher (adds Gazebo objects to MoveIt planning scene)
-        Node(
-            package="panda_moveit_config",
-            executable="scene_publisher.py",
-            name="scene_publisher",
-            output="screen",
-            parameters=[{"use_sim_time": use_sim_time}],
-        ),
     ]
 
-    camera_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments=[
-            '0.6', '0.0', '1.05',  # x y z
-            '0', '1.5708', '0',    # roll pitch yaw
-            'world',               # parent frame
-            'overhead_camera_link' # child frame
-        ]
-    )
-
-    # e.g. add to automatically launch the object_detector
-    # object_detector = Node(
-    #     package='panda_moveit_config',
-    #     executable='object_detector.py',
-    #     output='screen'
+    # wrist_camera_tf = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     arguments=['0', '0', '0', '0', '0', '0',
+    #                'wrist_camera_link',
+    #                'panda/wrist_camera_link/wrist_camera'],
     # )
 
-    ld = LaunchDescription([camera_tf] + declared_arguments + launch_descriptions + nodes)
+    ld = LaunchDescription(declared_arguments + launch_descriptions + nodes)
     return ld
 
 

@@ -27,11 +27,11 @@ ros2 launch panda_moveit_config ex_gz_control.launch.py
 | Alias | Command | Description |
 |-------|---------|-------------|
 | `launch_ctrl` | `ros2 launch panda_moveit_config ex_gz_control.launch.py` | Launch Gazebo + MoveIt 2 + RViz |
-| `launch_detector` | `ros2 run panda_moveit_config object_detector.py` | Run the tabletop object detector |
-| `launch_planner` | `ros2 run panda_moveit_config grasp_planner.py` | Run the grasp planner |
+| `launch_bt` | `ros2 run panda_moveit_config bt_pick_place.py` | Run the behavior tree |
 | `build` | `colcon build --merge-install --symlink-install --cmake-args "-DCMAKE_BUILD_TYPE=Release"` | Rebuild the ROS workspace |
 
 ## Labs
 
 - [Lab 01](labs/LAB01.md) — MoveIt 2 motion planning
-- [Lab 02](labs/LAB02.md) — Perception and Grasping
+- [Lab 02](labs/LAB02.md) — Perception and grasping
+- [Lab 03](labs/LAB03.md) — Behavior tree pick-and-place

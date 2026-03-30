@@ -16,6 +16,7 @@ WORKDIR ${WS_DIR}
 RUN apt-get update && \
     apt-get install -yq --no-install-recommends \
     ros-${ROS_DISTRO}-ros-gz \
+    ros-${ROS_DISTRO}-py-trees-ros-viewer \
     libglvnd0 \
     libgl1 \
     libglx0 \
@@ -70,7 +71,5 @@ RUN cmake -S ${WS_SRC_DIR}/panda_gz_moveit2/deps/gpd \
 RUN sed -i '$i source "${WS_INSTALL_DIR}/local_setup.bash" --' /ros_entrypoint.sh && \
     sed -i '$a source "/opt/ros/${ROS_DISTRO}/setup.bash"' ~/.bashrc && \
     echo 'alias launch_ctrl="ros2 launch panda_moveit_config ex_gz_control.launch.py"' >> ~/.bashrc && \
-    echo 'alias launch_detector="ros2 run panda_moveit_config object_detector.py"' >> ~/.bashrc && \
-    echo 'alias launch_planner="ros2 run panda_moveit_config grasp_planner.py"' >> ~/.bashrc && \
-    echo 'alias launch_synthetic="ros2 run panda_moveit_config synthetic_point_cloud.py"' >> ~/.bashrc && \
+    echo 'alias launch_bt="ros2 run panda_moveit_config bt_pick_place.py"' >> ~/.bashrc && \
     echo 'alias build="colcon build --merge-install --symlink-install --cmake-args \"-DCMAKE_BUILD_TYPE=Release\""' >> ~/.bashrc
