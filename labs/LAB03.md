@@ -1,306 +1,196 @@
-# Lab 03: Behavior Trees for Robot Manipulation
+# LAB 03 — Behavior Tree Pick-and-Place
 
 ## Overview
 
-In Lab 02, you implemented pick-and-place as a monolithic `pick()` function.
-When something went wrong (the arm clipped the object, the gripper didn't
-close properly) the planner found no path and the function returned `False`,
-stopping execution. There was no recovery, no retry, and no way to tell from the
-outside which step had failed.
+You have just joined the autonomy team at ROBOINC. The hardware is ready, the simulation environment is set up, and the component libraries are integrated. What remains is the behavior: a system that can reliably pick objects off a table and sort them into a container, repeatedly, without human intervention.
 
-In this lab you will decompose that same sequence into a **Behavior Tree**,
-making every step an explicit node with a clear SUCCESS or FAILURE status,
-and explore how the engineering trees extend the ability of the planner to work
-autonomously across multiple steps while bounding how much errors accumulate.
+This is a realistic situation. The spec is intentionally high-level. The infrastructure has rough edges. Some things will not work the first time. Your job is to make engineering decisions, implement the missing pieces, and deliver something that runs end-to-end.
 
-**Learning objectives:**
+The core abstraction is a behavior tree, a structured way to compose robot behaviors that is widely used in industry precisely because it handles failure gracefully. You will wire the tree, implement the planning nodes, and think carefully about what "reliable" means when the robot operates in an uncertain environment.
 
-- Understand BT node types, status semantics, and tick-based execution
-- Recognize how the BT structure maps to the LAB02 `pick()` sequence
-- Implement grasp candidate generation, execution, and placement as BT nodes
-- Wire recovery behavior (Retry, Sequence) and justify the structural choices
+## Behavior Trees
 
-## Prerequisites
+This lab uses py-trees for behavior tree execution and GPD for grasp candidate generation:
+- https://py-trees.readthedocs.io/en/devel/introduction.html
+- https://github.com/atenpas/gpd
 
-Complete Lab 02. Use the same Docker container.
-
-> **Tip:** The container includes the following aliases:
->
-> | Alias | Description |
-> |-------|-------------|
-> | `launch_ctrl` | Launch Gazebo + MoveIt 2 + RViz |
-> | `launch_planner` | Run the grasp planner |
-> | `build` | Rebuild the ROS workspace |
-
-## Submission Requirements
-
-Submit a PDF document containing:
-
-1. Screenshots of each deliverable as specified
-2. Written answers to all questions
-
-And a ZIP file containing:
-
-3. Your completed `behavior_tree.py`
-
-**Point breakdown:** Part 1 (15) + Part 2 (20) + Part 3 (25) + Part 4 (20) + Part 5 (20) = **100 points**
-
----
-
-## Part 1: Introduction to Behavior Trees (15 points)
-
-### What went wrong in Lab 02
-
-Open `grasp_planner.py` from Lab 02 and find the `pick()` method. It follows
-this structure:
-
-```python
-def pick(self, object_id, object_pose):
-    if not self.move_gripper(open=True):
-        return False
-    if not self.move_arm_to_pose(pre_grasp):
-        return False
-    if not self.move_arm_to_pose(grasp_pose, ...):
-        return False
-    if not self.move_gripper(open=False):
-        return False
-    self.attach_object(object_id)
-    ...
-    return True
-```
-
-Every step can fail, but failure always means the same thing: stop and return
-`False`. There is no retry, no fallback, and no way to know which step failed
-without reading the logs. Run the grasp planner a few times and observe how
-often it fails silently.
-
-**Deliverable 1.1:** Run `launch_planner` three times. For each run, note
-whether pick succeeded or failed, and if it failed, which step produced the
-last log message before failure.
-
-### Behavior Tree concepts
-
-A Behavior Tree is a tree of nodes, each of which returns one of three statuses
-when *ticked*:
+Every node in the tree returns one of three statuses when ticked:
 
 | Status | Meaning |
 |--------|---------|
 | `SUCCESS` | The node completed its goal |
 | `FAILURE` | The node could not complete its goal |
-| `RUNNING` | The node is still working (async) |
+| `RUNNING` | The node is still working |
 
-There are two composite node types used in this lab:
-
-**Sequence** — ticks children left to right. Returns `SUCCESS` only if *all*
-children succeed. Returns `FAILURE` as soon as one child fails (short-circuit).
-Equivalent to logical AND.
-
-**Selector** — ticks children left to right. Returns `SUCCESS` as soon as one
-child succeeds. Returns `FAILURE` only if *all* children fail.
-Equivalent to logical OR.
-
-The **Retry** decorator wraps a child and re-ticks it on failure, up to N times.
-
-The **Blackboard** is a shared key-value store that nodes use to pass data
-between each other without direct coupling.
-
-### The Lab 02 pick() sequence as a BT
-
-The `pick()` method maps directly onto a Sequence node:
-
-```
-Sequence (Grasp)
-├── OpenGripper
-├── MoveToPreGrasp
-├── MoveToGrasp
-├── CloseGripper
-└── AttachObject
-```
-
-Each step is a leaf node. If `MoveToGrasp` returns FAILURE, the Sequence stops, exactly like `return False`. Instead, we will retry the grasp up to `N` times, and if it's still failing we fall-back to the top-down retry.
-
-```
-Retry(N)
-└── Sequence (Grasp)
-    ├── OpenGripper
-    ├── MoveToPreGrasp
-    ├── MoveToGrasp
-    ├── CloseGripper
-    └── AttachObject
-```
-
-The Retry re-ticks the entire Sequence on failure, trying a different grasp
-candidate each time. This is the recovery that Lab 02 was missing.
-
-**Deliverable 1.2:** Answer the following:
-
-1. In the BT above, if `MoveToGrasp` fails on the first attempt, which nodes
-   are re-executed on the next Retry tick?
-2. What is the difference between a Sequence with `memory=True` and one with
-   `memory=False` in py_trees? When would you use each?
-3. If the Retry decorator exhausts all N attempts, what status does it return
-   to its parent?
-
-### Exploring the mock tree
-
-A mock behavior tree is provided in `behavior_tree.py`. It implements the
-full tree structure from this lab using fake nodes (no robot required) so you
-can observe BT semantics before connecting to the real robot.
-
-Run the viewer and the mock tree in separate terminals:
-
-```bash
-# Terminal 1
-py-trees-tree-viewer --no-sandbox
-
-# Terminal 2
-ros2 run panda_moveit_config behavior_tree.py --ros-args -p scenario:=grasp_retry
-```
-
-Open `http://localhost:8080` in a browser to see the tree ticking live.
-
-Available scenarios:
-
-| Scenario | Description |
-|----------|-------------|
-| `happy_path` | Everything succeeds |
-| `grasp_retry` | Grasp needs 2 attempts |
-| `grasp_exhausted` | Grasp exhausts all N retries, outer Retry resets |
-| `place_fails` | The place fails, outer Retry resets |
-
-**Deliverable 1.3:** Run each scenario and take a screenshot of the tree
-viewer showing the final status. For `grasp_exhausted`, describe in one
-sentence what the outer Retry does that the inner Retry cannot.
+A **Sequence** ticks its children left to right and returns `SUCCESS` only if all of them succeed. The moment one returns `FAILURE`, the Sequence stops and propagates `FAILURE` upward — equivalent to a chain of `and` conditions. The `RepeatAlways` decorator wraps the root Sequence and re-ticks it on both `SUCCESS` and `FAILURE`, creating the outer loop.
 
 ---
 
-## Part 2: ComputeGraspCandidates (20 points)
+## Provided Infrastructure
 
-`ComputeGraspCandidates` is itself a **Selector** — it tries GPD first and
-falls back to an enumerative strategy if GPD fails to produce candidates:
+The following are provided and should not be modified:
 
-```
-Selector (ComputeGraspCandidates)
-├── GPDCandidates
-└── EnumerativeCandidates
-```
+- **`RobotInterface`** — ROS 2 node wrapping MoveIt, the gripper controller, and the Gazebo pose bridge
+- **`MoveToHome`** — resets the system on every entry: opens the gripper, detaches all objects from the robot, and moves the arm to the home configuration
+- **`ReadScene`** — waits for all object poses to arrive and stabilize, then adds them to the MoveIt planning scene
+- **`CheckObjectIsAttached`** — verifies that the gripper has closed around the object by checking finger gap. Note: in simulation we use a physics weld to enforce attachment; this check is a proxy, not a guarantee
+- **`CheckAllObjectsInContainer`** — polls until the current object has settled inside the container bounds, then checks whether all objects are sorted. Returns FAILURE to trigger a restart for the next object, and SUCCESS only when all objects are confirmed placed
+- **`gpd.py`** — thin wrapper around the GPD grasp planner library. Handles point cloud I/O and coordinate frame conversion, but not filtering
 
-Open `behavior_tree.py` and find the `GPDCandidates` and `EnumerativeCandidates`
-nodes. Each reads the target object pose from the blackboard and writes a ranked
-list of `GraspCandidate` objects to `/candidates`.
+## Deliverables
 
-**TODO:** Implement both nodes:
+**Due: TBD on Brightspace.**
 
-- `GPDCandidates.update()`: use the provided `GPDInterface` to generate learned
-  candidates. Return FAILURE if GPD produces no valid candidates.
-- `EnumerativeCandidates.update()`: sample candidates at fixed offsets and
-  orientations around the object (top-down, angled, side).
+Submit a single zip file containing:
 
-Both must write to `/candidates` sorted by descending score.
+| Part | Points | Deliverable |
+|------|--------|-------------|
+| 1 — Tree Structure | 20 | `build_tree()` and `SelectObject.update()` in `bt_pick_place.py`; written answers to the Part 1 questions |
+| 2 — Invariants | 20 | Written invariant analysis for each provided node (one paragraph each) |
+| 3 — Grasp Proposal | 30 | `ProposeGrasps.update()` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
+| 4 — Drop Pose | 30 | `ProposeDropPose.update()` in `bt_pick_place.py`; screenshot of the terminal showing all three objects sorted; one paragraph on your drop pose policy and any failure modes observed |
 
-**Deliverable 2.1:** Run the full tree on the robot and screenshot the tree
-viewer showing which branch of the Selector was taken.
-
-**Deliverable 2.2:** In one sentence, explain why the Selector took the branch
-it did. If it fell back to enumerative, what did GPD fail to handle?
+**Point breakdown:** Part 1 (20) + Part 2 (20) + Part 3 (30) + Part 4 (30) = **100 points**
 
 ---
 
-## Part 3: ExecutePick (25 points)
+## Part 1 — Tree Structure
 
-The `ExecutePick` node iterates the candidate list from the blackboard and
-attempts each one in order. It mirrors the LAB02 `pick()` sequence using the
-provided robot primitives.
+The skeleton provides the individual behavior nodes but leaves the tree wiring incomplete. Check the file `bt_pick_place.py`.
 
-**Provided primitives:**
+**Task:** Complete `build_tree()` so that the robot executes the following loop:
+
+1. **Reset** — move to home, read the scene, select the next unsorted object
+2. **Grasp** — propose grasp candidates, filter, execute pick sequence
+3. **Place** — move to drop zone, release, confirm object is in container
+
+The tree should restart from the beginning on any failure, and terminate cleanly when all objects are sorted.
+
+**Questions to consider:**
+- What composite type (Sequence vs Selector) is appropriate for each block?
+- Where does the restart-on-failure logic live, and how does it interact with the tree's success condition?
+- Trace a failure in the Grasp block: what state is the robot in when it fails? What does `MoveToHome` need to do to recover?
+
+---
+
+## Part 2 — Promises and Proxies
+
+Each node in the tree makes an implicit promise: if it returns SUCCESS, some condition holds that the rest of the tree can rely on. The motion planner is only as reliable as those promises.
+
+Some promises are exact. Others are proxies — the node checks something *related* to the condition it is trying to guarantee, not the condition itself. Proxies can lie. When they do, downstream nodes fail silently, the robot continues on a false assumption, and the failure mode can be very difficult to diagnose.
+
+**Task:** For each provided node, write one paragraph covering:
+- What the node is promising on SUCCESS
+- What downstream behavior depends on that promise
+- Under what conditions the promise could be false, and what the robot would do next.
+
+Nodes to analyze: `MoveToHome`, `ReadScene`, `CheckObjectIsAttached`, `CheckAllObjectsInContainer`
+
+When `ReadScene` succeeds, it writes a snapshot of the scene to the blackboard as `detected_objects` — a `dict[str, DetectedObject]`. Each entry bundles the pose and dimensions of one object:
 
 ```python
-robot.move_arm_to_pose(pose: Pose) -> bool
-robot.move_arm_to_joints(joints: dict) -> bool
-robot.move_gripper(open: bool) -> bool
-robot.attach_object(object_id: str)
+obj = self.bb.detected_objects['blue_box']
+obj.pose   # geometry_msgs/Pose — world-frame pose at the time ReadScene ran
+obj.dims   # [dx, dy, dz] in metres
 ```
 
-**TODO:** Implement `ExecutePick.update()`. For each candidate:
-
-1. Compute a pre-grasp pose (offset above the candidate position)
-2. Move to pre-grasp
-3. Descend to grasp pose
-4. Close gripper
-5. Attach object to planning scene
-6. Retreat upward
-
-Return `SUCCESS` if any candidate succeeds, `FAILURE` if all are exhausted.
-
-**Deliverable 3.1:** Run with `scenario:=grasp_retry` and screenshot the tree
-showing the Retry decorator counting failures before a successful pick.
-
-**Deliverable 3.2:** Answer: what happens to the planning scene if
-`ExecutePick` returns FAILURE after `attach_object()` has already been called?
-How would you guard against this?
+This snapshot is frozen. It reflects the scene at the moment `ReadScene` returned SUCCESS, not the live Gazebo state.
 
 ---
 
-## Part 4: ExecutePlace (20 points)
+## Part 3 — Grasp Pose Proposal
 
-The `ExecutePlace` node reads the place target from the blackboard (provided
-by `ComputePlaceTarget`) and places the held object there.
-
-**Provided primitives:**
+`ProposeGrasps` is the core planning node. GPD is provided via `gpd.py`.
+Grasp candidates are defined as a data class, returned by `detect_grasps`.
 
 ```python
-robot.move_arm_to_pose(pose: Pose) -> bool
-robot.move_gripper(open: bool) -> bool
-robot.detach_object(object_id: str)
+@dataclass
+class GraspCandidate:
+    pos:   np.ndarray  # (3,) grasp point in world frame
+    R:     np.ndarray  # (3,3) rotation matrix (columns are unit vectors in world frame)
+    score: float       # higher is better, already sorted descending
 ```
 
-**TODO:** Implement `ExecutePlace.update()`:
+`R` is a special geometric convention used by GPD, encoding the hand.
+It has three columns:
 
-1. Compute a pre-place pose (offset above the target)
-2. Move to pre-place
-3. Descend to place height
-4. Open gripper
-5. Detach object from planning scene
-6. Retreat upward
+| Column | Meaning |
+|--------|---------|
+| `R[:, 0]` | approach direction — the vector the hand travels along to reach the object |
+| `R[:, 1]` | binormal — perpendicular to the other two |
+| `R[:, 2]` | hand axis — the direction the fingers close along |
 
-**Deliverable 4.1:** Run the full tree with the real robot and screenshot
-a successful place.
+GPD was trained on general grippers and produces candidates in all orientations. Not all are reachable by the Panda. The motion planner targets the TCP (Tool Center Point) — the coordinate frame fixed at the tip of the gripper. `gpd_to_panda_pose` converts a candidate into a TCP pose the planner can consume, but it cannot fix a candidate that is geometrically infeasible to begin with. 
 
-**Deliverable 4.2:** Answer: `ExecutePlace` has no local Retry in the tree.
-If place fails, what does the outer Retry reset to? Is this the right behavior?
+**Task:** Complete `ProposeGrasps.update()`. Sample the object surface, run GPD, and filter the candidates down to poses the robot can actually execute — not every candidate GPD produces is reachable. Think about what the approach direction implies for the required joint configuration, and what clearance is needed above the table. If no valid candidates remain after retrying, return `FAILURE`.
+
+**Questions to consider:**
+- The score field is already sorted descending; why might the highest-scored candidate still be rejected by your filter?
+- The Panda is a table-mounted arm. What approach directions are physically impossible regardless of IK?
 
 ---
 
-## Part 5: Tree Composition (20 points)
+## Part 4 — Drop Pose Selection
 
-Open `behavior_tree.py` and find the `build_tree()` function. Currently it
-contains a placeholder.
+**Task:** Implement a drop pose selection policy that chooses a pose within the depth and width of the container and maintains a sufficient clearance above the walls.
 
-**TODO:** Wire the full tree using `py_trees` composites and decorators:
+**Questions to consider:**
+- How would you avoid special-casing the drop-pose based on the specific parameters of the container?
+- The drop height is not given directly. Which container fields do you need to combine to derive it, and what does each contribute?
 
+---
+
+## API Reference
+
+### Blackboard
+
+All blackboard state is accessed through `self.bb` after registering the relevant keys.
+
+```python
+self.bb.detected_objects   # dict[str, DetectedObject] — snapshot written by ReadScene
+self.bb.container          # dict — container geometry (read-only, set at startup):
+                           #   'center_xy' : (x, y)  — centre in world frame
+                           #   'width'     : float   — inner x dimension
+                           #   'depth'     : float   — inner y dimension
+                           #   'height'    : float   — wall height above table surface
+                           #   'table_z'   : float   — table surface z
+self.bb.target_object_id   # str  — written by SelectObject
+self.bb.grasp_proposals    # list[Pose] — written by ProposeGrasps
+self.bb.drop_pose          # Pose — written by ProposeDropPose
 ```
-Retry (outer)
-└── Sequence (PickAndPlace)
-    ├── MoveToHome
-    ├── Retry(N)
-    │   └── Sequence (Grasp)
-    │       ├── ComputeGraspCandidates
-    │       ├── FilterAndRank
-    │       └── ExecutePick
-    └── Sequence (Place)
-        ├── ComputePlaceTarget
-        └── ExecutePlace
+
+### RobotInterface
+
+```python
+self.robot.log(msg: str)
+# Append to the on-screen log panel and ROS logger.
+
+self.robot.publish_pose_axes(pose: Pose, label: str, scale: float = 0.1)
+# Visualise XYZ axes at pose in RViz (x=red, y=green, z=blue).
+
+self.robot.publish_cloud(points: np.ndarray)
+# Publish an (N, 3) float32 array as PointCloud2 on /scan_cloud.
+
+RobotInterface.TOP_DOWN_ORIENTATION: Quaternion
+# Gripper pointing straight down (180° rotation about x-axis).
 ```
 
-**Deliverable 5.1:** Screenshot the tree viewer showing your composed tree
-structure with all nodes visible.
+### gpd.py
 
-**Deliverable 5.2:** Answer the following:
+```python
+from gpd import sample_cuboid_surface, detect_grasps, GraspCandidate
 
-1. Why is `Retry(N)` placed around the Grasp sequence but not around the
-   Place sequence?
-2. What does the outer `Retry` reset that the inner one does not?
-3. `MoveToHome` is the first node in the outer Sequence. What failure mode
-   does this positioning handle?
-4. The `Sequence` nodes use `memory=True`. What would change if you set
-   `memory=False`?
+sample_cuboid_surface(
+    center: tuple,       # (x, y, z) world frame
+    dims: list,          # [dx, dy, dz]
+    n_points: int,
+    orientation: tuple,  # (qx, qy, qz, qw) object orientation
+) -> np.ndarray          # (N, 3) float32 point cloud
+
+detect_grasps(cloud: np.ndarray) -> list[GraspCandidate]
+# Run GPD on a point cloud. Returns candidates sorted by score (best first).
+# Each candidate has .pos (world frame), .R (rotation matrix), .score.
+# Call gpd_to_panda_pose(c.pos, c.R) to get a Pose for the motion planner.
+```
+
+---
