@@ -11,7 +11,6 @@ install(DIRECTORY config launch rviz srdf DESTINATION share/${PROJECT_NAME})
 
 # Install Python scripts
 install(PROGRAMS
-  scripts/scene_publisher.py
   scripts/action_node.py
   scripts/robot_interface.py
   scripts/gpd.py
