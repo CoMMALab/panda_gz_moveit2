@@ -8,10 +8,6 @@ This is a realistic situation. The spec is intentionally high-level. The infrast
 
 The core abstraction is a behavior tree, a structured way to compose robot behaviors that is widely used in industry precisely because it handles failure gracefully. You will wire the tree, implement the planning nodes, and think carefully about what "reliable" means when the robot operates in an uncertain environment.
 
-## Prerequisites
-
-Complete Lab 02. Use the same Docker container.
-
 > **Tip:** The container includes the following aliases:
 >
 > | Alias | Description |
@@ -40,13 +36,14 @@ A **Sequence** ticks its children left to right and returns `SUCCESS` only if al
 
 ## Provided Infrastructure
 
-The following are provided and should not be modified:
+The following are provided under `panda_gz_moveit2/panda_moveit_config/scripts` and should not be modified:
 
-- **`RobotInterface`** — ROS 2 node wrapping MoveIt, the gripper controller, and the Gazebo pose bridge
-- **`MoveToHome`** — resets the system on every entry: opens the gripper, detaches all objects from the robot, and moves the arm to the home configuration
-- **`ReadScene`** — waits for all object poses to arrive and stabilize, then adds them to the MoveIt planning scene
-- **`CheckObjectIsAttached`** — verifies that the gripper has closed around the object by checking finger gap. Note: in simulation we use a physics weld to enforce attachment; this check is a proxy, not a guarantee
-- **`CheckAllObjectsInContainer`** — polls until the current object has settled inside the container bounds, then checks whether all objects are sorted. Returns FAILURE to trigger a restart for the next object, and SUCCESS only when all objects are confirmed placed
+- `robot_interface.py`:
+  - **`RobotInterface`** — ROS 2 node wrapping MoveIt, the gripper controller, and the Gazebo pose bridge
+  - **`MoveToHome`** — resets the system on every entry: opens the gripper, detaches all objects from the robot, and moves the arm to the home configuration
+  - **`ReadScene`** — waits for all object poses to arrive and stabilize, then adds them to the MoveIt planning scene
+  - **`CheckAllObjectsInContainer`** — polls until the current object has settled inside the container bounds, then checks whether all objects are sorted. Returns FAILURE to trigger a restart for the next object, and SUCCESS only when all objects are confirmed placed. This node **must** be the last in your behavior tree.
+  - **Primitive Nodes** - Several other provided behaviors at the top of `bt_pick_place.py` that you should read and use in your tree.
 - **`gpd.py`** — thin wrapper around the GPD grasp planner library. Handles point cloud I/O and coordinate frame conversion, but not filtering
 
 ## Deliverables
@@ -55,12 +52,15 @@ The following are provided and should not be modified:
 
 Submit a single zip file containing:
 
+1. Your written report (including your full name)
+2. Your `bt_pick_place.py` file with implementations of: `build_tree()`, `SelectObject`, `ProposeGrasps`, and `ProposeDropPose`.
+
 | Part | Points | Deliverable |
 |------|--------|-------------|
 | (1) Tree Structure | 20 | `build_tree()` and `SelectObject.update()` in `bt_pick_place.py`; written answers to the Part 1 questions |
 | (2) Invariants | 20 | Written invariant analysis for each provided node (one paragraph each) |
-| (3) Grasp Proposal | 30 | `ProposeGrasps.update()` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
-| (4) Drop Pose | 30 | `ProposeDropPose.update()` in `bt_pick_place.py`; screenshot of the terminal showing all three objects sorted; one paragraph on your drop pose policy and any failure modes observed |
+| (3) Grasp Proposal | 30 | `ProposeGrasps` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
+| (4) Drop Pose | 30 | `ProposeDropPose` in `bt_pick_place.py`; one paragraph on your drop pose policy and any failure modes observed |
 
 **Point breakdown:** Part 1 (20) + Part 2 (20) + Part 3 (30) + Part 4 (30) = **100 points**
 
@@ -76,7 +76,7 @@ The skeleton provides the individual behavior nodes but leaves the tree wiring i
 2. **Grasp** — propose grasp candidates, filter, execute pick sequence
 3. **Place** — move to drop zone, release, confirm object is in container
 
-The tree should restart from the beginning on any failure, and terminate cleanly when all objects are sorted.
+The tree should restart from the beginning on any failure, and terminate cleanly when all objects are sorted. The built tree should use all the nodes in the file.
 
 **Questions to consider:**
 - What composite type (Sequence vs Selector) is appropriate for each block?
@@ -112,7 +112,9 @@ This snapshot is frozen. It reflects the scene at the moment `ReadScene` returne
 
 ## Part 3 — Grasp Pose Proposal
 
-`ProposeGrasps` is the core planning node. GPD is provided via `gpd.py`.
+`SelectObject` and `ProposeGrasps` are the core planning nodes.
+Implement `SelectObject`, it should write the `/target_object_id` to the blackboard and then return SUCCESS, or FAILURE if no object is reachable.
+Next, implement `ProposeGrasps` using GPD, provided in `gpd.py`. It should write the `/grasp_proposals` to the blackboard and then return SUCCESS, or FAILURE if no proposals are written.
 Grasp candidates are defined as a data class, returned by `detect_grasps`.
 
 ```python
@@ -134,7 +136,7 @@ It has three columns:
 
 GPD was trained on general grippers and produces candidates in all orientations. Not all are reachable by the Panda. The motion planner targets the TCP (Tool Center Point) — the coordinate frame fixed at the tip of the gripper. `gpd_to_panda_pose` converts a candidate into a TCP pose the planner can consume, but it cannot fix a candidate that is geometrically infeasible to begin with. 
 
-**Task:** Complete `ProposeGrasps.update()`. Sample the object surface, run GPD, and filter the candidates down to poses the robot can actually execute — not every candidate GPD produces is reachable. Think about what the approach direction implies for the required joint configuration, and what clearance is needed above the table. If no valid candidates remain after retrying, return `FAILURE`.
+**Task:** Complete the `ProposeGrasps` node. Sample the object surface, run GPD, and filter the candidates down to poses the robot can actually execute — not every candidate GPD produces is reachable. Think about what the approach direction implies for the required joint configuration, and what clearance is needed above the table. If no valid candidates remain after retrying, return `FAILURE`.
 
 **Questions to consider:**
 - The score field is already sorted descending; why might the highest-scored candidate still be rejected by your filter?
@@ -144,7 +146,7 @@ GPD was trained on general grippers and produces candidates in all orientations.
 
 ## Part 4 — Drop Pose Selection
 
-**Task:** Implement a drop pose selection policy that chooses a pose within the depth and width of the container and maintains a sufficient clearance above the walls.
+**Task:** Implement `ProposeDropPose` such that the robot chooses a pose within the depth and width of the container and maintains a sufficient clearance above the walls. It should write `/drop_pose` to the blackboard and return SUCCESS after. Finally, execute `CheckAllObjectsInContainer`, which will verify that your implementation successfully organizes all the objects in the container.
 
 **Questions to consider:**
 - How would you avoid special-casing the drop-pose based on the specific parameters of the container?
@@ -200,9 +202,11 @@ sample_cuboid_surface(
 ) -> np.ndarray          # (N, 3) float32 point cloud
 
 detect_grasps(cloud: np.ndarray) -> list[GraspCandidate]
-# Run GPD on a point cloud. Returns candidates sorted by score (best first).
-# Each candidate has .pos (world frame), .R (rotation matrix), .score.
-# Call gpd_to_panda_pose(c.pos, c.R) to get a Pose for the motion planner.
+# Run GPD on a point cloud. Returns candidates sorted by score (best first)
+# Each candidate has .pos (world frame), .R (rotation matrix), .score
+
+gpd_to_panda_pose(candidate.pos, candidate.R) -> Pose
+# Call this function to get a Pose for the motion planner from a GPD candidate
 ```
 
 ---
