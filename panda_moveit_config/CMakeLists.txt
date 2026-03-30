@@ -12,11 +12,10 @@ install(DIRECTORY config launch rviz srdf DESTINATION share/${PROJECT_NAME})
 # Install Python scripts
 install(PROGRAMS
   scripts/scene_publisher.py
-  scripts/move_object.py
-  scripts/object_detector.py
-  scripts/grasp_planner.py
-  scripts/grasp_planner_gpd.py
-  scripts/synthetic_point_cloud.py
+  scripts/action_node.py
+  scripts/robot_interface.py
+  scripts/gpd.py
+  scripts/bt_pick_place.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

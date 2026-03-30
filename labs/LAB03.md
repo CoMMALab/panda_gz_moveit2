@@ -8,6 +8,18 @@ This is a realistic situation. The spec is intentionally high-level. The infrast
 
 The core abstraction is a behavior tree, a structured way to compose robot behaviors that is widely used in industry precisely because it handles failure gracefully. You will wire the tree, implement the planning nodes, and think carefully about what "reliable" means when the robot operates in an uncertain environment.
 
+## Prerequisites
+
+Complete Lab 02. Use the same Docker container.
+
+> **Tip:** The container includes the following aliases:
+>
+> | Alias | Description |
+> |-------|-------------|
+> | `launch_ctrl` | Launch Gazebo + MoveIt 2 + RViz |
+> | `launch_bt` | Run the behavior tree |
+> | `build` | Rebuild the ROS workspace |
+
 ## Behavior Trees
 
 This lab uses py-trees for behavior tree execution and GPD for grasp candidate generation:
@@ -39,16 +51,16 @@ The following are provided and should not be modified:
 
 ## Deliverables
 
-**Due: TBD on Brightspace.**
+**Due: April 10th, 11:59PM**
 
 Submit a single zip file containing:
 
 | Part | Points | Deliverable |
 |------|--------|-------------|
-| 1 — Tree Structure | 20 | `build_tree()` and `SelectObject.update()` in `bt_pick_place.py`; written answers to the Part 1 questions |
-| 2 — Invariants | 20 | Written invariant analysis for each provided node (one paragraph each) |
-| 3 — Grasp Proposal | 30 | `ProposeGrasps.update()` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
-| 4 — Drop Pose | 30 | `ProposeDropPose.update()` in `bt_pick_place.py`; screenshot of the terminal showing all three objects sorted; one paragraph on your drop pose policy and any failure modes observed |
+| (1) Tree Structure | 20 | `build_tree()` and `SelectObject.update()` in `bt_pick_place.py`; written answers to the Part 1 questions |
+| (2) Invariants | 20 | Written invariant analysis for each provided node (one paragraph each) |
+| (3) Grasp Proposal | 30 | `ProposeGrasps.update()` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
+| (4) Drop Pose | 30 | `ProposeDropPose.update()` in `bt_pick_place.py`; screenshot of the terminal showing all three objects sorted; one paragraph on your drop pose policy and any failure modes observed |
 
 **Point breakdown:** Part 1 (20) + Part 2 (20) + Part 3 (30) + Part 4 (30) = **100 points**
 

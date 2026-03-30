@@ -512,15 +512,15 @@
     <link name='panda_link7'>
       <pose relative_to='panda_joint7'>0 0 0 0 0 0</pose>
       <inertial>
-        <pose>0.0088750335079030955 0.0087406710883396622 0.079760703330192237 0 0 0</pose>
-        <mass>0.66437446475861062</mass>
+        <pose>0.01122333786496231 0.00515942060391606 0.083067043282150768 0 0 0</pose>
+        <mass>0.71437446475861055</mass>
         <inertia>
-          <ixx>0.001715624246641117</ixx>
-          <ixy>-0.00035911383816520319</ixy>
-          <ixz>0.0001149799088050231</ixz>
-          <iyy>0.0017151484993571059</iyy>
-          <iyz>-1.563921204261271e-05</iyz>
-          <izz>0.001211247721448517</izz>
+          <ixx>0.0019511337326493211</ixx>
+          <ixy>-0.00027928534494427968</ixy>
+          <ixz>4.1279357115332818e-05</ixz>
+          <iyy>0.001881261889071348</iyy>
+          <iyz>9.6756839026135224e-05</iyz>
+          <izz>0.0013953343995733319</izz>
         </inertia>
       </inertial>
       <collision name='panda_link7_collision'>
@@ -581,6 +581,23 @@
           </mesh>
         </geometry>
       </visual>
+      <sensor name='wrist_camera' type='rgbd_camera'>
+        <topic>wrist_camera</topic>
+        <camera>
+          <horizontal_fov>1.0469999999999999</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.050000000000000003</near>
+            <far>2</far>
+          </clip>
+        </camera>
+        <update_rate>15</update_rate>
+        <always_on>true</always_on>
+        <pose>0.042426400000000003 -0.042426400000000003 0.127 3.1415926535897931 -1.5707926536057681 -3.141590816989793</pose>
+      </sensor>
     </link>
     <joint name='panda_finger_joint1' type='prismatic'>
       <pose relative_to='panda_link7'>0 0 0.16539999999999999 0 0 -0.78539816339744839</pose>
@@ -634,15 +651,12 @@
         </geometry>
         <surface>
           <contact>
-            <ode>
-              <max_vel>0.0</max_vel>
-              <min_depth>0.001</min_depth>
-            </ode>
+            <ode/>
           </contact>
           <friction>
             <ode>
-              <mu>50.0</mu>
-              <mu2>50.0</mu2>
+              <mu>1.1299999999999999</mu>
+              <mu2>1.1299999999999999</mu2>
             </ode>
           </friction>
         </surface>
@@ -709,15 +723,12 @@
         </geometry>
         <surface>
           <contact>
-            <ode>
-              <max_vel>0.0</max_vel>
-              <min_depth>0.001</min_depth>
-            </ode>
+            <ode/>
           </contact>
           <friction>
             <ode>
-              <mu>50.0</mu>
-              <mu2>50.0</mu2>
+              <mu>1.1299999999999999</mu>
+              <mu2>1.1299999999999999</mu2>
             </ode>
           </friction>
         </surface>
@@ -735,6 +746,36 @@
     <plugin name='gz_ros2_control::GazeboSimROS2ControlPlugin' filename='libgz_ros2_control-system.so'>
       <parameters>/root/ws/install/share/panda_moveit_config/config/controllers_effort.yaml</parameters>
     </plugin>
+    <plugin name='gz::sim::systems::Sensors' filename='gz-sim-sensors-system'>
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-detachable-joint-system"
+            name="gz::sim::systems::DetachableJoint">
+      <parent_link>panda_leftfinger</parent_link>
+      <child_model>blue_box</child_model>
+      <child_link>link</child_link>
+      <detach_topic>/blue_box/detach</detach_topic>
+      <attach_topic>/blue_box/attach</attach_topic>
+      <output_topic>/blue_box/state</output_topic>
+    </plugin>
+    <plugin filename="gz-sim-detachable-joint-system"
+            name="gz::sim::systems::DetachableJoint">
+      <parent_link>panda_leftfinger</parent_link>
+      <child_model>red_box</child_model>
+      <child_link>link</child_link>
+      <detach_topic>/red_box/detach</detach_topic>
+      <attach_topic>/red_box/attach</attach_topic>
+      <output_topic>/red_box/state</output_topic>
+    </plugin>
+    <plugin filename="gz-sim-detachable-joint-system"
+            name="gz::sim::systems::DetachableJoint">
+      <parent_link>panda_leftfinger</parent_link>
+      <child_model>green_box</child_model>
+      <child_link>link</child_link>
+      <detach_topic>/green_box/detach</detach_topic>
+      <attach_topic>/green_box/attach</attach_topic>
+      <output_topic>/green_box/state</output_topic>
+    </plugin>
     <frame name='panda_hand_tcp_virtual_joint' attached_to='panda_hand'>
       <pose>0 0 0.10340000000000001 0 0 0</pose>
     </frame>
@@ -745,6 +786,12 @@
       <pose>0 0 0 0 0 0</pose>
     </frame>
     <frame name='panda_hand' attached_to='panda_joint_wrist'>
+      <pose>0 0 0 0 0 0</pose>
+    </frame>
+    <frame name='wrist_camera_joint' attached_to='panda_link8'>
+      <pose>0.059999999999999998 0 0.02 3.1415926535746803 -1.5707926536662187 -2.3561926535787308</pose>
+    </frame>
+    <frame name='wrist_camera_link' attached_to='wrist_camera_joint'>
       <pose>0 0 0 0 0 0</pose>
     </frame>
     <frame name='panda_link8_virtual_joint' attached_to='panda_link7'>

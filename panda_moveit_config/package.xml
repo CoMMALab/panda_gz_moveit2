@@ -24,6 +24,9 @@
   <exec_depend>moveit_ros_move_group</exec_depend>
   <exec_depend>moveit_servo</exec_depend>
   <exec_depend>moveit</exec_depend>
+  <exec_depend>py_trees</exec_depend>
+  <exec_depend>py_trees_ros</exec_depend>
+  <exec_depend>py_trees_ros_viewer</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>tf2_msgs</exec_depend>
   <exec_depend>tf_transformations</exec_depend>
