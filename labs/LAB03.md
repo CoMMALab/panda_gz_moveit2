@@ -57,9 +57,9 @@ Submit a single zip file containing:
 
 | Part | Points | Deliverable |
 |------|--------|-------------|
-| (1) Tree Structure | 20 | `build_tree()` and `SelectObject.update()` in `bt_pick_place.py`; written answers to the Part 1 questions |
-| (2) Invariants | 20 | Written invariant analysis for each provided node (one paragraph each) |
-| (3) Grasp Proposal | 30 | `ProposeGrasps` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
+| (1) Tree Structure | 20 | `build_tree()` in `bt_pick_place.py`; written answers to the Part 1 questions |
+| (2) Invariants | 20 | Written invariant analysis for the four mentioned nodes (one paragraph each) |
+| (3) Grasp Proposal | 30 | `SelectObject` and `ProposeGrasps` in `bt_pick_place.py`; screenshot of the RViz point cloud and grasp markers during a pick; written answers to the Part 3 questions |
 | (4) Drop Pose | 30 | `ProposeDropPose` in `bt_pick_place.py`; one paragraph on your drop pose policy and any failure modes observed |
 
 **Point breakdown:** Part 1 (20) + Part 2 (20) + Part 3 (30) + Part 4 (30) = **100 points**
@@ -91,12 +91,16 @@ Each node in the tree makes an implicit promise: if it returns SUCCESS, some con
 
 Some promises are exact. Others are proxies — the node checks something *related* to the condition it is trying to guarantee, not the condition itself. Proxies can lie. When they do, downstream nodes fail silently, the robot continues on a false assumption, and the failure mode can be very difficult to diagnose.
 
-**Task:** For each provided node, write one paragraph covering:
+**Task:** For each of the four node, write one paragraph covering:
 - What the node is promising on SUCCESS
 - What downstream behavior depends on that promise
 - Under what conditions the promise could be false, and what the robot would do next.
 
-Nodes to analyze: `MoveToHome`, `ReadScene`, `CheckObjectIsAttached`, `CheckAllObjectsInContainer`
+Nodes to analyze:
+1. `MoveToHome`
+2. `ReadScene`
+3. `CheckObjectIsAttached`
+4. `CheckAllObjectsInContainer`
 
 When `ReadScene` succeeds, it writes a snapshot of the scene to the blackboard as `detected_objects` — a `dict[str, DetectedObject]`. Each entry bundles the pose and dimensions of one object:
 
