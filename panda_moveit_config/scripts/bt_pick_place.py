@@ -406,11 +406,59 @@ class RepeatAlways(py_trees.decorators.Decorator):
         return self.decorated.status
 
 
-# ─── Lab03 TODOs ─────────────────────────────────────────────────────────────
+# ─── Lab03 Implementations ─────────────────────────────────────────────────────────────
 
+# TODO
 def build_tree(robot: RobotInterface) -> py_trees.behaviour.Behaviour:  # noqa: ARG001
-    raise NotImplementedError
+    """
+    Task: Complete build_tree() so that the robot executes the following loop:
+        1. Reset — move to home, read the scene, select the next unsorted object
+        2. Grasp — propose grasp candidates, filter, execute pick sequence
+        3. Place — move to drop zone, release, confirm object is in container
+    
+    The tree should restart from the beginning on any failure, and terminate cleanly when all objects are sorted. 
+    The built tree should use all the nodes in the file.
+    """
+    # reset
+    reset = py_trees.composites.Sequence("reset", memory=True)
+    reset.add_children([
+        MoveToHome(robot), 
+        ReadScene(robot),
+        SelectObject(robot)
+    ])
 
+    # grasp
+    grasp = py_trees.composites.Sequence("grasp", memory=True)
+    grasp.add_children([
+        ProposeGrasps(robot), 
+        OpenGripper(robot),
+        MoveToPreGrasp(robot),
+        MoveToGrasp(robot),
+        CloseGripper(robot),
+        CheckObjectIsAttached(robot),
+        AttachObject(robot),
+        Retreat(robot)
+    ])
+    
+    # place
+    place = py_trees.composites.Sequence("place", memory=True)
+    place.add_children([
+        ProposeDropPose(robot),
+        MoveToDrop(robot),
+        OpenGripper(robot),
+        DetachObject(robot),
+        CheckAllObjectsInContainer(robot)
+    ])
+
+    repeat = py_trees.composites.Sequence("repeat", memory=True)
+    repeat.add_children([
+        reset,
+        grasp,
+        place
+    ]) 
+
+    root = RepeatAlways(child=repeat, name="RepeatAlways")
+    return root
 
 def init_blackboard():
     bb = py_trees.blackboard.Client(name='init')
